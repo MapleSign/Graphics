@@ -104,19 +104,12 @@ public class ScrollRecorderInRender
         {
             frustumPlanes[cascadeIndex] = cacheSystem.cascadeSlices[cascadeIndex].projectionMatrix.decomposeProjection;
         }
-        Parallel.For(0, count, i =>
+        var parallelOptions = new ParallelOptions() { MaxDegreeOfParallelism = -1 };
+        Parallel.For(0, count, parallelOptions, i =>
         {
             for (int cascadeIndex = 0; cascadeIndex < cacheSystem.cascadesCount; cascadeIndex++)
             {
-                var pos = boundingSpheres[i].position;
-                var radius = boundingSpheres[i].radius;
-                Vector3 cullingSphereCenter = cacheSystem.cascadeSplitDistances[cascadeIndex];
-                float cullingSphereRadius = cacheSystem.cascadeSplitDistances[cascadeIndex].w;
-                float distance = Vector3.Distance(pos, cullingSphereCenter);
-
-                Visibility visibility = distance < (cullingSphereRadius - radius) * 0.8f ? Visibility.Complete :
-                    distance >= (cullingSphereRadius + radius) * 1.8f ? Visibility.Invisible : Visibility.Partial;
-
+                var visibility = IntersectWithCullingSphere(cascadeIndex, i);
                 if (lastVisibilities[i, cascadeIndex] != Visibility.Complete && visibility != Visibility.Invisible)
                 {
                     newLayerValues[i] = k_DefaultLayer;
@@ -125,6 +118,38 @@ public class ScrollRecorderInRender
                 lastVisibilities[i, cascadeIndex] = visibility;
             }
         });
+    }
+
+    Visibility IntersectWithCullingSphere(int cascadeIndex, int i)
+    {
+        var pos = boundingSpheres[i].position;
+        var radius = boundingSpheres[i].radius;
+        Vector3 cullingSphereCenter = cacheSystem.cascadeSplitDistances[cascadeIndex];
+        float cullingSphereRadius = cacheSystem.cascadeSplitDistances[cascadeIndex].w;
+        float distance = Vector3.Distance(pos, cullingSphereCenter);
+
+        Visibility visibility = distance < (cullingSphereRadius - radius) * 0.8f ? Visibility.Complete :
+            distance >= (cullingSphereRadius + radius) * 1.8f ? Visibility.Invisible : Visibility.Partial;
+
+        return visibility;
+    }
+
+    Visibility IntersectWithShadowVolume(int cascadeIndex, int i)
+    {
+        var pos = cacheSystem.cascadeSlices[cascadeIndex].viewMatrix.MultiplyPoint(boundingSpheres[i].position);
+        pos = cacheSystem.cascadeSlices[cascadeIndex].projectionMatrix.MultiplyPoint(pos);
+
+        var fpCenter = new Vector3(-1f, -1f, -1f);
+        var fpSize = new Vector3(2f, 2f, 2f);
+        Rect frustumRect = new Rect(fpCenter, fpSize);
+        var visibility = IntersectRectSphere(frustumRect, new Vector3(pos.x, pos.y, boundingSpheres[i].radius / (frustumPlanes[cascadeIndex].right)));
+
+        var depthRadius = boundingSpheres[i].radius / (frustumPlanes[cascadeIndex].zFar - frustumPlanes[cascadeIndex].zNear) * 2f;
+        var depthVisibility = IntersectLine(-1f, 1f, pos.z - depthRadius, pos.z + depthRadius);
+
+        visibility = visibility < depthVisibility ? visibility : depthVisibility;
+
+        return visibility;
     }
 
     Visibility IntersectLine(float a0, float a1, float b0, float b1)
@@ -163,9 +188,9 @@ public class ScrollRecorderInRender
             }
             closetPoint[minIndex] = Mathf.Sign(closetPoint[minIndex]) * bounds.size[minIndex] * 0.5f;
             closetPoint += bounds.center;
-            closetDistanceSqr = Vector3.SqrMagnitude(closetPoint - sphereCenter);
+            closetDistanceSqr = Vector2.SqrMagnitude(closetPoint - sphereCenter);
 
-            visibility = closetDistanceSqr >= radiusSqr ? Visibility.Complete : Visibility.Partial;
+            visibility = closetDistanceSqr > radiusSqr ? Visibility.Complete : Visibility.Partial;
         }
         else
         {
@@ -174,9 +199,9 @@ public class ScrollRecorderInRender
             {
                 closetPoint[i] = Mathf.Clamp(sphereCenter[i], bounds.min[i], bounds.max[i]);
             }
-            closetDistanceSqr = Vector3.SqrMagnitude(closetPoint - sphereCenter);
+            closetDistanceSqr = Vector2.SqrMagnitude(closetPoint - sphereCenter);
 
-            visibility = closetDistanceSqr >= radiusSqr ? Visibility.Invisible : Visibility.Partial;
+            visibility = closetDistanceSqr > radiusSqr ? Visibility.Invisible : Visibility.Partial;
         }
 
         return visibility;
