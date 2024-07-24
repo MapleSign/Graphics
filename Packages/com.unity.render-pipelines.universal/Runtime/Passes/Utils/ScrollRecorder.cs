@@ -30,6 +30,8 @@ public class ScrollRecorder : MonoBehaviour
 
     Visibility[,] lastVisibilities;
 
+    Vector4[] cullingSpheres;
+
     [SerializeReference]
     GameObject holders;
 
@@ -68,6 +70,8 @@ public class ScrollRecorder : MonoBehaviour
                 lastVisibilities[i, c] = Visibility.Invisible;
             }
         }
+
+        cullingSpheres = new Vector4[k_MaxCascades];
     }
 
     void Reset()
@@ -113,18 +117,26 @@ public class ScrollRecorder : MonoBehaviour
                 throw new System.Exception("Invalid cascade count");
         }
 
-        Array.Fill(newLayerValues, k_IgnoreStaticShadowLayer, 0, count);
         var proj = dirLight.transform.worldToLocalMatrix;
+
+        for (int i = 0; i < asset.shadowCascadeCount; i++)
+        {
+            ComputeCullingSphereSimple(cam.aspect, cam.fieldOfView, cam.nearClipPlane, fars[i], out var cullingSphereCenter, out var cullingSphereRadius);
+            cullingSphereCenter = cam.cameraToWorldMatrix.MultiplyPoint(cullingSphereCenter);
+            cullingSphereCenter = proj.MultiplyPoint(cullingSphereCenter);
+            cullingSphereCenter.z = 0f;
+            cullingSpheres[i] = cullingSphereCenter;
+            cullingSpheres[i].w = cullingSphereRadius;
+        }
+
+        Array.Fill(newLayerValues, k_IgnoreStaticShadowLayer, 0, count);
         Parallel.For(0, count, i =>
         {
             projPositions[i] = proj.MultiplyPoint(boundingSpheres[i].position);
             projPositions[i].z = 0f;
         });
 
-        for (int i = 0; i < asset.shadowCascadeCount; i++)
-        {
-            UpdateCascade(i, fars[i]);
-        }
+        UpdateCascades();
 
         var profScope = new ProfilingScope(null, new ProfilingSampler("Modify Layers"));
         for (int i = 0; i < count; i++)
@@ -133,25 +145,27 @@ public class ScrollRecorder : MonoBehaviour
         }
     }
 
-    void UpdateCascade(int cascadeIndex, float far)
+    void UpdateCascades()
     {
-        var proj = dirLight.transform.worldToLocalMatrix;
-        ComputeCullingSphereSimple(cam.aspect, cam.fieldOfView, cam.nearClipPlane, far, out var cullingSphereCenter, out var cullingSphereRadius);
-        cullingSphereCenter = cam.cameraToWorldMatrix.MultiplyPoint(cullingSphereCenter);
-        cullingSphereCenter = proj.MultiplyPoint(cullingSphereCenter);
-        cullingSphereCenter.z = 0f;
         Parallel.For(0, count, i =>
         {
             var pos = projPositions[i];
-            var distance = Vector3.Distance(pos, cullingSphereCenter);
-            Visibility visibility = distance <= (cullingSphereRadius - boundingSpheres[i].radius) ? Visibility.Complete :
-                distance >= (cullingSphereRadius + boundingSpheres[i].radius) ? Visibility.Invisible : Visibility.Partial;
-            if (lastVisibilities[i, cascadeIndex] != Visibility.Complete && visibility != Visibility.Invisible)
-            {
-                newLayerValues[i] = k_DefaultLayer;
-            }
 
-            lastVisibilities[i, cascadeIndex] = visibility;
+            for (int cascadeIndex = 0; cascadeIndex < asset.shadowCascadeCount; cascadeIndex++)
+            {
+                Vector3 cullingSphereCenter = cullingSpheres[cascadeIndex];
+                float cullingSphereRadius = cullingSpheres[cascadeIndex].w;
+
+                var distance = Vector3.Distance(pos, cullingSphereCenter);
+                Visibility visibility = distance <= (cullingSphereRadius - boundingSpheres[i].radius) ? Visibility.Complete :
+                    distance >= (cullingSphereRadius + boundingSpheres[i].radius) ? Visibility.Invisible : Visibility.Partial;
+                if (lastVisibilities[i, cascadeIndex] != Visibility.Complete && visibility != Visibility.Invisible)
+                {
+                    newLayerValues[i] = k_DefaultLayer;
+                }
+
+                lastVisibilities[i, cascadeIndex] = visibility;
+            }
         });
     }
 
