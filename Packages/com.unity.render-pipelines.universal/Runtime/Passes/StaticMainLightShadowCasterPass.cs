@@ -5,9 +5,9 @@ using UnityEngine.Experimental.Rendering.RenderGraphModule;
 namespace UnityEngine.Rendering.Universal.Internal
 {
     /// <summary>
-    /// Renders a shadow map for the main Light.
+    /// Renders a shadow map for the main Light for static objects.
     /// </summary>
-    public class MainLightShadowCasterPass : ScriptableRenderPass
+    public class StaticMainLightShadowCasterPass : ScriptableRenderPass
     {
         private static class MainLightShadowConstantBuffer
         {
@@ -29,14 +29,15 @@ namespace UnityEngine.Rendering.Universal.Internal
         float m_MaxShadowDistanceSq;
         int m_ShadowCasterCascadesCount;
 
-        int m_MainLightShadowmapID;
-        internal RTHandle m_MainLightShadowmapTexture;
         private RTHandle m_EmptyMainLightShadowmapTexture;
         private const int k_EmptyShadowMapDimensions = 1;
-        private const string k_MainLightShadowMapTextureName = "_MainLightShadowmapTexture";
         private const string k_EmptyMainLightShadowMapTextureName = "_EmptyMainLightShadowmapTexture";
         private static readonly Vector4 s_EmptyShadowParams = new Vector4(1, 0, 1, 0);
         private static readonly Vector4 s_EmptyShadowmapSize = s_EmptyShadowmapSize = new Vector4(k_EmptyShadowMapDimensions, 1f / k_EmptyShadowMapDimensions, k_EmptyShadowMapDimensions, k_EmptyShadowMapDimensions);
+
+        int m_StaticMainLightShadowmapID;
+        internal RTHandle m_StaticMainLightShadowmapTexture;
+        private const string k_StaticeMainLightShadowMapTextureName = "_StaticMainLightShadowmapTexture";
 
         Matrix4x4[] m_MainLightShadowMatrices;
         ShadowSliceData[] m_CascadeSlices;
@@ -47,16 +48,16 @@ namespace UnityEngine.Rendering.Universal.Internal
         int renderTargetWidth;
         int renderTargetHeight;
 
-        ProfilingSampler m_ProfilingSetupSampler = new ProfilingSampler("Setup Main Shadowmap");
+        ProfilingSampler m_ProfilingSetupSampler = new ProfilingSampler("Setup Static Main Shadowmap");
 
         /// <summary>
-        /// Creates a new <c>MainLightShadowCasterPass</c> instance.
+        /// Creates a new <c>StaticMainLightShadowCasterPass</c> instance.
         /// </summary>
         /// <param name="evt">The <c>RenderPassEvent</c> to use.</param>
         /// <seealso cref="RenderPassEvent"/>
-        public MainLightShadowCasterPass(RenderPassEvent evt)
+        public StaticMainLightShadowCasterPass(RenderPassEvent evt)
         {
-            base.profilingSampler = new ProfilingSampler(nameof(MainLightShadowCasterPass));
+            base.profilingSampler = new ProfilingSampler(nameof(StaticMainLightShadowCasterPass));
             renderPassEvent = evt;
 
             m_MainLightShadowMatrices = new Matrix4x4[k_MaxCascades + 1];
@@ -74,7 +75,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             MainLightShadowConstantBuffer._ShadowOffset1 = Shader.PropertyToID("_MainLightShadowOffset1");
             MainLightShadowConstantBuffer._ShadowmapSize = Shader.PropertyToID("_MainLightShadowmapSize");
 
-            m_MainLightShadowmapID = Shader.PropertyToID(k_MainLightShadowMapTextureName);
+            m_StaticMainLightShadowmapID = Shader.PropertyToID(k_StaticeMainLightShadowMapTextureName);
         }
 
         /// <summary>
@@ -82,7 +83,7 @@ namespace UnityEngine.Rendering.Universal.Internal
         /// </summary>
         public void Dispose()
         {
-            m_MainLightShadowmapTexture?.Release();
+            m_StaticMainLightShadowmapTexture?.Release();
             m_EmptyMainLightShadowmapTexture?.Release();
         }
 
@@ -144,7 +145,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             m_CascadeBorder = renderingData.shadowData.mainLightShadowCascadeBorder;
             m_CreateEmptyShadowmap = false;
             useNativeRenderPass = true;
-            ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_MainLightShadowmapTexture, renderTargetWidth, renderTargetHeight, k_ShadowmapBufferBits, name: k_MainLightShadowMapTextureName);
+            ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_StaticMainLightShadowmapTexture, renderTargetWidth, renderTargetHeight, k_ShadowmapBufferBits, name: k_StaticeMainLightShadowMapTextureName);
 
             return true;
         }
@@ -167,8 +168,8 @@ namespace UnityEngine.Rendering.Universal.Internal
             if (m_CreateEmptyShadowmap)
                 ConfigureTarget(m_EmptyMainLightShadowmapTexture);
             else
-                ConfigureTarget(m_MainLightShadowmapTexture);
-            //ConfigureClear(ClearFlag.All, Color.black);
+                ConfigureTarget(m_StaticMainLightShadowmapTexture);
+            ConfigureClear(ClearFlag.All, Color.black);
         }
 
         /// <inheritdoc/>
@@ -177,13 +178,13 @@ namespace UnityEngine.Rendering.Universal.Internal
             if (m_CreateEmptyShadowmap)
             {
                 SetEmptyMainLightCascadeShadowmap(ref context, ref renderingData);
-                renderingData.commandBuffer.SetGlobalTexture(m_MainLightShadowmapID, m_EmptyMainLightShadowmapTexture.nameID);
+                renderingData.commandBuffer.SetGlobalTexture(m_StaticMainLightShadowmapID, m_EmptyMainLightShadowmapTexture.nameID);
 
                 return;
             }
 
             RenderMainLightCascadeShadowmap(ref context, ref renderingData);
-            renderingData.commandBuffer.SetGlobalTexture(m_MainLightShadowmapID, m_MainLightShadowmapTexture.nameID);
+            renderingData.commandBuffer.SetGlobalTexture(m_StaticMainLightShadowmapID, m_StaticMainLightShadowmapTexture.nameID);
         }
 
         void Clear()
@@ -237,6 +238,7 @@ namespace UnityEngine.Rendering.Universal.Internal
 
                 var settings = new ShadowDrawingSettings(cullResults, shadowLightIndex, BatchCullingProjectionType.Orthographic);
                 settings.useRenderingLayerMaskTest = UniversalRenderPipeline.asset.useRenderingLayers;
+                settings.objectsFilter = ShadowObjectsFilter.StaticOnly;
 
                 for (int cascadeIndex = 0; cascadeIndex < m_ShadowCasterCascadesCount; ++cascadeIndex)
                 {
@@ -324,7 +326,7 @@ namespace UnityEngine.Rendering.Universal.Internal
         }
         private class PassData
         {
-            internal MainLightShadowCasterPass pass;
+            internal StaticMainLightShadowCasterPass pass;
             internal RenderGraph graph;
 
             internal TextureHandle shadowmapTexture;
@@ -338,13 +340,13 @@ namespace UnityEngine.Rendering.Universal.Internal
         {
             TextureHandle shadowTexture;
 
-            using (var builder = graph.AddRenderPass<PassData>("Main Light Shadowmap", out var passData, base.profilingSampler))
+            using (var builder = graph.AddRenderPass<PassData>("Static Main Light Shadowmap", out var passData, base.profilingSampler))
             {
                 InitPassData(ref passData, ref renderingData, ref graph);
 
                 if (!m_CreateEmptyShadowmap)
                 {
-                    passData.shadowmapTexture = UniversalRenderer.CreateRenderGraphTexture(graph, m_MainLightShadowmapTexture.rt.descriptor, "Main Shadowmap", true, ShadowUtils.m_ForceShadowPointSampling ? FilterMode.Point : FilterMode.Bilinear);
+                    passData.shadowmapTexture = UniversalRenderer.CreateRenderGraphTexture(graph, m_StaticMainLightShadowmapTexture.rt.descriptor, "Static Main Shadowmap", true, ShadowUtils.m_ForceShadowPointSampling ? FilterMode.Point : FilterMode.Bilinear);
                     builder.UseDepthBuffer(passData.shadowmapTexture, DepthAccess.Write);
                 }
 
@@ -360,7 +362,7 @@ namespace UnityEngine.Rendering.Universal.Internal
                 shadowTexture = passData.shadowmapTexture;
             }
 
-            using (var builder = graph.AddRenderPass<PassData>("Set Main Shadow Globals", out var passData, base.profilingSampler))
+            using (var builder = graph.AddRenderPass<PassData>("Set Static Main Shadow Globals", out var passData, base.profilingSampler))
             {
                 InitPassData(ref passData, ref renderingData, ref graph);
 
@@ -391,7 +393,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             passData.graph = graph;
 
             passData.emptyShadowmap = m_CreateEmptyShadowmap;
-            passData.shadowmapID = m_MainLightShadowmapID;
+            passData.shadowmapID = m_StaticMainLightShadowmapID;
             passData.renderingData = renderingData;
         }
     };

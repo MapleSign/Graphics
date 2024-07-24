@@ -94,6 +94,8 @@ namespace UnityEngine.Rendering.Universal
         DepthNormalOnlyPass m_DepthNormalPrepass;
         CopyDepthPass m_PrimedDepthCopyPass;
         MotionVectorRenderPass m_MotionVectorPass;
+        StaticMainLightShadowCasterPass m_StaticMainLightShadowCasterPass;
+        CopyDepthPass m_StaticMainLightShadowCopyDepthPass;
         MainLightShadowCasterPass m_MainLightShadowCasterPass;
         AdditionalLightsShadowCasterPass m_AdditionalLightsShadowCasterPass;
         GBufferPass m_GBufferPass;
@@ -228,6 +230,8 @@ namespace UnityEngine.Rendering.Universal
 #else
             this.m_DepthPrimingRecommended = true;
 #endif
+            m_StaticMainLightShadowCasterPass = new StaticMainLightShadowCasterPass(RenderPassEvent.BeforeRenderingShadows);
+            m_StaticMainLightShadowCopyDepthPass = new CopyDepthPass(RenderPassEvent.BeforeRenderingShadows, m_CopyDepthMaterial, shouldClear:true, useDestView:true);
 
             // Note: Since all custom render passes inject first and we have stable sort,
             // we inject the builtin passes in the before events.
@@ -387,6 +391,7 @@ namespace UnityEngine.Rendering.Universal
                 m_GBufferPass?.Dispose();
 
             m_PostProcessPasses.ReleaseRenderTargets();
+            m_StaticMainLightShadowCasterPass?.Dispose();
             m_MainLightShadowCasterPass?.Dispose();
             m_AdditionalLightsShadowCasterPass?.Dispose();
 
@@ -450,6 +455,11 @@ namespace UnityEngine.Rendering.Universal
                         case DebugFullScreenMode.MainLightShadowMap:
                         {
                             DebugHandler.SetDebugRenderTarget(m_MainLightShadowCasterPass.m_MainLightShadowmapTexture, normalizedRect, false);
+                            break;
+                        }
+                        case DebugFullScreenMode.StaticMainLightShadowMap:
+                        {
+                            DebugHandler.SetDebugRenderTarget(m_StaticMainLightShadowCasterPass.m_StaticMainLightShadowmapTexture, normalizedRect, false);
                             break;
                         }
                         case DebugFullScreenMode.ReflectionProbeAtlas:
@@ -657,7 +667,11 @@ namespace UnityEngine.Rendering.Universal
             bool isGizmosEnabled = false;
 #endif
 
+            bool staticMainLightShadows = m_StaticMainLightShadowCasterPass.Setup(ref renderingData);
             bool mainLightShadows = m_MainLightShadowCasterPass.Setup(ref renderingData);
+
+            m_StaticMainLightShadowCopyDepthPass.Setup(m_StaticMainLightShadowCasterPass.m_StaticMainLightShadowmapTexture, m_MainLightShadowCasterPass.m_MainLightShadowmapTexture);
+
             bool additionalLightShadows = m_AdditionalLightsShadowCasterPass.Setup(ref renderingData);
             bool transparentsNeedSettingsPass = m_TransparentSettingsPass.Setup();
 
@@ -821,6 +835,12 @@ namespace UnityEngine.Rendering.Universal
             ConfigureCameraTarget(m_ActiveCameraColorAttachment, m_ActiveCameraDepthAttachment);
 
             bool hasPassesAfterPostProcessing = activeRenderPassQueue.Find(x => x.renderPassEvent == RenderPassEvent.AfterRenderingPostProcessing) != null;
+
+            if (staticMainLightShadows)
+                EnqueuePass(m_StaticMainLightShadowCasterPass);
+
+            if (staticMainLightShadows && mainLightShadows)
+                EnqueuePass(m_StaticMainLightShadowCopyDepthPass);
 
             if (mainLightShadows)
                 EnqueuePass(m_MainLightShadowCasterPass);

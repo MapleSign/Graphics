@@ -27,6 +27,8 @@ namespace UnityEngine.Rendering.Universal.Internal
         internal bool m_ShouldClear;
         private PassData m_PassData;
 
+        internal bool m_UseDestView;
+
         /// <summary>
         /// Creates a new <c>CopyDepthPass</c> instance.
         /// </summary>
@@ -36,7 +38,7 @@ namespace UnityEngine.Rendering.Universal.Internal
         /// <param name="copyToDepth">Controls whether it should do a copy to a depth format target.</param>
         /// <param name="copyResolvedDepth">Set to true if the source depth is MSAA resolved.</param>
         /// <seealso cref="RenderPassEvent"/>
-        public CopyDepthPass(RenderPassEvent evt, Material copyDepthMaterial, bool shouldClear = false, bool copyToDepth = false, bool copyResolvedDepth = false)
+        public CopyDepthPass(RenderPassEvent evt, Material copyDepthMaterial, bool shouldClear = false, bool copyToDepth = false, bool copyResolvedDepth = false, bool useDestView = false)
         {
             base.profilingSampler = new ProfilingSampler(nameof(CopyDepthPass));
             m_PassData = new PassData();
@@ -45,6 +47,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             renderPassEvent = evt;
             m_CopyResolvedDepth = copyResolvedDepth;
             m_ShouldClear = shouldClear;
+            m_UseDestView = useDestView;
         }
 
         /// <summary>
@@ -90,6 +93,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             internal int msaaSamples;
             internal bool copyResolvedDepth;
             internal bool copyToDepth;
+            internal bool useDestView;
         }
 
         /// <inheritdoc/>
@@ -99,6 +103,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             m_PassData.msaaSamples = MssaSamples;
             m_PassData.copyResolvedDepth = m_CopyResolvedDepth;
             m_PassData.copyToDepth = CopyToDepth || !RenderingUtils.SupportsGraphicsFormat(GraphicsFormat.R32_SFloat, FormatUsage.Render);
+            m_PassData.useDestView = m_UseDestView;
             renderingData.commandBuffer.SetGlobalTexture("_CameraDepthAttachment", source.nameID);
             ExecutePass(context, m_PassData, ref renderingData.commandBuffer, ref renderingData.cameraData, source, destination);
         }
@@ -179,10 +184,18 @@ namespace UnityEngine.Rendering.Universal.Internal
 #endif
                 bool yflip = cameraData.IsHandleYFlipped(source) != cameraData.IsHandleYFlipped(destination);
                 Vector4 scaleBias = yflip ? new Vector4(viewportScale.x, -viewportScale.y, 0, viewportScale.y) : new Vector4(viewportScale.x, viewportScale.y, 0, 0);
-                if (isGameViewFinalTarget)
-                    cmd.SetViewport(cameraData.pixelRect);
+                if (!passData.useDestView)
+                {
+                    if (isGameViewFinalTarget)
+                        cmd.SetViewport(cameraData.pixelRect);
+                    else
+                        cmd.SetViewport(new Rect(0, 0, cameraData.cameraTargetDescriptor.width, cameraData.cameraTargetDescriptor.height));
+                }
                 else
-                    cmd.SetViewport(new Rect(0, 0, cameraData.cameraTargetDescriptor.width, cameraData.cameraTargetDescriptor.height));
+                {
+                    var destSize = destination.referenceSize;
+                    cmd.SetViewport(new Rect(0, 0, destSize.x, destSize.y));
+                }
                 Blitter.BlitTexture(cmd, source, scaleBias, copyDepthMaterial, 0);
             }
         }
