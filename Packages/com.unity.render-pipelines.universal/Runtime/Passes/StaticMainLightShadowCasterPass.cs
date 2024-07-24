@@ -257,16 +257,12 @@ namespace UnityEngine.Rendering.Universal.Internal
             var fp0 = lastShadowProjMatrices[cascadeIndex].decomposeProjection;
             var fp1 = projMatrix.decomposeProjection;
 
-            // from new view to old view
             var dUV = new Vector4(
                 (fp1.right - fp1.left) / (fp0.right - fp0.left),
                 (fp1.top - fp1.bottom) / (fp0.top - fp0.bottom),
-                dP.x / (fp0.right - fp0.left),
-                dP.y / (fp0.top - fp0.bottom)
+                (fp1.left - fp0.left + dP.x) / (fp0.right - fp0.left),
+                (fp1.bottom - fp0.bottom + dP.y) / (fp0.top - fp0.bottom)
                 );
-            // from screen to uv
-            dUV.z = dUV.z + 0.5f - dUV.x * 0.5f;
-            dUV.w = dUV.w + 0.5f - dUV.y * 0.5f;
             uvDeform = dUV;
 
             // from old view to new view

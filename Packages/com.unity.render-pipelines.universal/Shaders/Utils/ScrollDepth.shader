@@ -31,7 +31,7 @@ Shader "Hidden/Universal Render Pipeline/ScrollDepth" {
                 if (uv.x < _Bound.x || uv.x > _Bound.z || uv.y < _Bound.y || uv.y > _Bound.w)
                     discard;
                 float depth = SAMPLE_DEPTH_TEXTURE(_DepthMap, sampler_linear_clamp, uv.xy);
-                if (depth == 1.0)
+                if (depth >= 0.99)
                     discard;
                 depth = depth * _DepthDeform.x + _DepthDeform.y;
                 return depth;
