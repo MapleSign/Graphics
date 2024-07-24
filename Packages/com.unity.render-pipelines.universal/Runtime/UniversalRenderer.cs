@@ -94,9 +94,7 @@ namespace UnityEngine.Rendering.Universal
         DepthNormalOnlyPass m_DepthNormalPrepass;
         CopyDepthPass m_PrimedDepthCopyPass;
         MotionVectorRenderPass m_MotionVectorPass;
-        StaticMainLightShadowCasterPass m_StaticMainLightShadowCasterPass;
-        CopyDepthPass m_StaticMainLightShadowCopyDepthPass;
-        MainLightShadowCasterPass m_MainLightShadowCasterPass;
+        MainLightShadowCacheSystem m_MainLightShadowCacheSystem;
         AdditionalLightsShadowCasterPass m_AdditionalLightsShadowCasterPass;
         GBufferPass m_GBufferPass;
         CopyDepthPass m_GBufferCopyDepthPass;
@@ -230,12 +228,10 @@ namespace UnityEngine.Rendering.Universal
 #else
             this.m_DepthPrimingRecommended = true;
 #endif
-            m_StaticMainLightShadowCasterPass = new StaticMainLightShadowCasterPass(RenderPassEvent.BeforeRenderingShadows);
-            m_StaticMainLightShadowCopyDepthPass = new CopyDepthPass(RenderPassEvent.BeforeRenderingShadows, m_CopyDepthMaterial, shouldClear:true, useDestView:true);
 
             // Note: Since all custom render passes inject first and we have stable sort,
             // we inject the builtin passes in the before events.
-            m_MainLightShadowCasterPass = new MainLightShadowCasterPass(RenderPassEvent.BeforeRenderingShadows);
+            m_MainLightShadowCacheSystem = new MainLightShadowCacheSystem(RenderPassEvent.BeforeRenderingShadows, m_CopyDepthMaterial);
             m_AdditionalLightsShadowCasterPass = new AdditionalLightsShadowCasterPass(RenderPassEvent.BeforeRenderingShadows);
 
 #if ENABLE_VR && ENABLE_XR_MODULE
@@ -391,8 +387,7 @@ namespace UnityEngine.Rendering.Universal
                 m_GBufferPass?.Dispose();
 
             m_PostProcessPasses.ReleaseRenderTargets();
-            m_StaticMainLightShadowCasterPass?.Dispose();
-            m_MainLightShadowCasterPass?.Dispose();
+            m_MainLightShadowCacheSystem?.Dispose();
             m_AdditionalLightsShadowCasterPass?.Dispose();
 
             m_CameraDepthAttachment?.Release();
@@ -454,12 +449,12 @@ namespace UnityEngine.Rendering.Universal
                         }
                         case DebugFullScreenMode.MainLightShadowMap:
                         {
-                            DebugHandler.SetDebugRenderTarget(m_MainLightShadowCasterPass.m_MainLightShadowmapTexture, normalizedRect, false);
+                            DebugHandler.SetDebugRenderTarget(m_MainLightShadowCacheSystem.dynamicPass.m_MainLightShadowmapTexture, normalizedRect, false);
                             break;
                         }
                         case DebugFullScreenMode.StaticMainLightShadowMap:
                         {
-                            DebugHandler.SetDebugRenderTarget(m_StaticMainLightShadowCasterPass.m_StaticMainLightShadowmapTexture, normalizedRect, false);
+                            DebugHandler.SetDebugRenderTarget(m_MainLightShadowCacheSystem.staticPass.m_StaticMainLightShadowmapTexture, normalizedRect, false);
                             break;
                         }
                         case DebugFullScreenMode.ReflectionProbeAtlas:
@@ -667,10 +662,7 @@ namespace UnityEngine.Rendering.Universal
             bool isGizmosEnabled = false;
 #endif
 
-            bool staticMainLightShadows = m_StaticMainLightShadowCasterPass.Setup(ref renderingData);
-            bool mainLightShadows = m_MainLightShadowCasterPass.Setup(ref renderingData);
-
-            m_StaticMainLightShadowCopyDepthPass.Setup(m_StaticMainLightShadowCasterPass.m_StaticMainLightShadowmapTexture, m_MainLightShadowCasterPass.m_MainLightShadowmapTexture);
+            bool mainLightShadows = m_MainLightShadowCacheSystem.Setup(ref renderingData);
 
             bool additionalLightShadows = m_AdditionalLightsShadowCasterPass.Setup(ref renderingData);
             bool transparentsNeedSettingsPass = m_TransparentSettingsPass.Setup();
@@ -836,14 +828,8 @@ namespace UnityEngine.Rendering.Universal
 
             bool hasPassesAfterPostProcessing = activeRenderPassQueue.Find(x => x.renderPassEvent == RenderPassEvent.AfterRenderingPostProcessing) != null;
 
-            if (staticMainLightShadows)
-                EnqueuePass(m_StaticMainLightShadowCasterPass);
-
-            if (staticMainLightShadows && mainLightShadows)
-                EnqueuePass(m_StaticMainLightShadowCopyDepthPass);
-
             if (mainLightShadows)
-                EnqueuePass(m_MainLightShadowCasterPass);
+                m_MainLightShadowCacheSystem.Enqueue(this);
 
             if (additionalLightShadows)
                 EnqueuePass(m_AdditionalLightsShadowCasterPass);

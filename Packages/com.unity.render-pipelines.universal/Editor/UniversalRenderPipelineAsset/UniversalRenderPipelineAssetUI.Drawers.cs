@@ -368,6 +368,19 @@ namespace UnityEditor.Rendering.Universal
             }
 
             EditorGUI.indentLevel--;
+
+            var shadowUpdateMode = (ShadowUpdateMode)EditorGUILayout.EnumPopup(Styles.shadowUpdateMode, serialized.shadowUpdateModeProp.GetEnumValue<ShadowUpdateMode>());
+            serialized.shadowUpdateModeProp.SetEnumValue(shadowUpdateMode);
+
+            if (shadowUpdateMode != ShadowUpdateMode.Dynamic)
+            {
+                EditorGUI.indentLevel++;
+
+                var cascadeUpdateMode = (CascadeUpdateMode)EditorGUILayout.EnumPopup(Styles.cascadeUpdateMode, serialized.cascadeUpdateModeProp.GetEnumValue<CascadeUpdateMode>());
+                serialized.cascadeUpdateModeProp.SetEnumValue(cascadeUpdateMode);
+
+                EditorGUI.indentLevel--;
+            }
         }
 
         static void DrawShadowsSoftShadowQuality(SerializedUniversalRenderPipelineAsset serialized, Editor ownerEditor)

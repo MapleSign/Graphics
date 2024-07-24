@@ -259,10 +259,10 @@ namespace UnityEngine.Rendering.Universal
 
             bool renderShadows = false;
 
-            if (m_MainLightShadowCasterPass.Setup(ref renderingData))
+            if (m_MainLightShadowCacheSystem.Setup(ref renderingData))
             {
                 renderShadows = true;
-                frameResources.mainShadowsTexture = m_MainLightShadowCasterPass.Render(renderGraph, ref renderingData);
+                frameResources.mainShadowsTexture = m_MainLightShadowCacheSystem.Render(renderGraph, ref renderingData);
             }
 
             if (m_AdditionalLightsShadowCasterPass.Setup(ref renderingData))

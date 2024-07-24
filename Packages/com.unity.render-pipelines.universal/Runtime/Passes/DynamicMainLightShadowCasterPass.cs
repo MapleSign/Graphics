@@ -7,7 +7,7 @@ namespace UnityEngine.Rendering.Universal.Internal
     /// <summary>
     /// Renders a shadow map for the main Light.
     /// </summary>
-    public class MainLightShadowCasterPass : ScriptableRenderPass
+    public class DynamicMainLightShadowCasterPass : ScriptableRenderPass
     {
         private static class MainLightShadowConstantBuffer
         {
@@ -23,11 +23,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             public static int _ShadowmapSize;
         }
 
-        const int k_MaxCascades = 4;
-        const int k_ShadowmapBufferBits = 16;
-        float m_CascadeBorder;
-        float m_MaxShadowDistanceSq;
-        int m_ShadowCasterCascadesCount;
+        MainLightShadowCacheSystem m_ShadowCacheSystem;
 
         int m_MainLightShadowmapID;
         internal RTHandle m_MainLightShadowmapTexture;
@@ -38,30 +34,21 @@ namespace UnityEngine.Rendering.Universal.Internal
         private static readonly Vector4 s_EmptyShadowParams = new Vector4(1, 0, 1, 0);
         private static readonly Vector4 s_EmptyShadowmapSize = s_EmptyShadowmapSize = new Vector4(k_EmptyShadowMapDimensions, 1f / k_EmptyShadowMapDimensions, k_EmptyShadowMapDimensions, k_EmptyShadowMapDimensions);
 
-        Matrix4x4[] m_MainLightShadowMatrices;
-        ShadowSliceData[] m_CascadeSlices;
-        Vector4[] m_CascadeSplitDistances;
-
         bool m_CreateEmptyShadowmap;
 
-        int renderTargetWidth;
-        int renderTargetHeight;
+        ShadowObjectsFilter m_ShadowObjectFilter = ShadowObjectsFilter.AllObjects;
 
-        ProfilingSampler m_ProfilingSetupSampler = new ProfilingSampler("Setup Main Shadowmap");
+        ProfilingSampler m_ProfilingSetupSampler = new ProfilingSampler("Setup Dynamic Main Shadowmap");
 
         /// <summary>
         /// Creates a new <c>MainLightShadowCasterPass</c> instance.
         /// </summary>
         /// <param name="evt">The <c>RenderPassEvent</c> to use.</param>
         /// <seealso cref="RenderPassEvent"/>
-        public MainLightShadowCasterPass(RenderPassEvent evt)
+        public DynamicMainLightShadowCasterPass(RenderPassEvent evt, MainLightShadowCacheSystem shadowCacheSystem)
         {
             base.profilingSampler = new ProfilingSampler(nameof(MainLightShadowCasterPass));
             renderPassEvent = evt;
-
-            m_MainLightShadowMatrices = new Matrix4x4[k_MaxCascades + 1];
-            m_CascadeSlices = new ShadowSliceData[k_MaxCascades];
-            m_CascadeSplitDistances = new Vector4[k_MaxCascades];
 
             MainLightShadowConstantBuffer._WorldToShadow = Shader.PropertyToID("_MainLightWorldToShadow");
             MainLightShadowConstantBuffer._ShadowParams = Shader.PropertyToID("_MainLightShadowParams");
@@ -75,6 +62,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             MainLightShadowConstantBuffer._ShadowmapSize = Shader.PropertyToID("_MainLightShadowmapSize");
 
             m_MainLightShadowmapID = Shader.PropertyToID(k_MainLightShadowMapTextureName);
+            m_ShadowCacheSystem = shadowCacheSystem;
         }
 
         /// <summary>
@@ -99,52 +87,16 @@ namespace UnityEngine.Rendering.Universal.Internal
 
             using var profScope = new ProfilingScope(null, m_ProfilingSetupSampler);
 
-            if (!renderingData.shadowData.supportsMainLightShadows)
-                return SetupForEmptyRendering(ref renderingData);
-
-            Clear();
-            int shadowLightIndex = renderingData.lightData.mainLightIndex;
-            if (shadowLightIndex == -1)
-                return SetupForEmptyRendering(ref renderingData);
-
-            VisibleLight shadowLight = renderingData.lightData.visibleLights[shadowLightIndex];
-            Light light = shadowLight.light;
-            if (light.shadows == LightShadows.None)
-                return SetupForEmptyRendering(ref renderingData);
-
-            if (shadowLight.lightType != LightType.Directional)
+            m_CreateEmptyShadowmap = m_ShadowCacheSystem.emptyRendering;
+            if (m_CreateEmptyShadowmap)
             {
-                Debug.LogWarning("Only directional lights are supported as main light.");
+                return SetupForEmptyRendering(ref renderingData);
             }
 
-            Bounds bounds;
-            if (!renderingData.cullResults.GetShadowCasterBounds(shadowLightIndex, out bounds))
-                return SetupForEmptyRendering(ref renderingData);
-
-            m_ShadowCasterCascadesCount = renderingData.shadowData.mainLightShadowCascadesCount;
-
-            int shadowResolution = ShadowUtils.GetMaxTileResolutionInAtlas(renderingData.shadowData.mainLightShadowmapWidth,
-                renderingData.shadowData.mainLightShadowmapHeight, m_ShadowCasterCascadesCount);
-            renderTargetWidth = renderingData.shadowData.mainLightShadowmapWidth;
-            renderTargetHeight = (m_ShadowCasterCascadesCount == 2) ?
-                renderingData.shadowData.mainLightShadowmapHeight >> 1 :
-                renderingData.shadowData.mainLightShadowmapHeight;
-
-            for (int cascadeIndex = 0; cascadeIndex < m_ShadowCasterCascadesCount; ++cascadeIndex)
-            {
-                bool success = ShadowUtils.ExtractDirectionalLightMatrix(ref renderingData.cullResults, ref renderingData.shadowData,
-                    shadowLightIndex, cascadeIndex, renderTargetWidth, renderTargetHeight, shadowResolution, light.shadowNearPlane,
-                    out m_CascadeSplitDistances[cascadeIndex], out m_CascadeSlices[cascadeIndex]);
-
-                if (!success)
-                    return SetupForEmptyRendering(ref renderingData);
-            }
-
-            m_MaxShadowDistanceSq = renderingData.cameraData.maxShadowDistance * renderingData.cameraData.maxShadowDistance;
-            m_CascadeBorder = renderingData.shadowData.mainLightShadowCascadeBorder;
-            m_CreateEmptyShadowmap = false;
             useNativeRenderPass = true;
-            ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_MainLightShadowmapTexture, renderTargetWidth, renderTargetHeight, k_ShadowmapBufferBits, name: k_MainLightShadowMapTextureName);
+            ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_MainLightShadowmapTexture, m_ShadowCacheSystem.renderTargetWidth, m_ShadowCacheSystem.renderTargetHeight, m_ShadowCacheSystem.k_ShadowmapBufferBits, name: k_MainLightShadowMapTextureName);
+
+            m_ShadowObjectFilter = renderingData.shadowData.shadowUpdateMode == ShadowUpdateMode.Dynamic ? ShadowObjectsFilter.AllObjects : ShadowObjectsFilter.DynamicOnly;
 
             return true;
         }
@@ -156,7 +108,7 @@ namespace UnityEngine.Rendering.Universal.Internal
 
             m_CreateEmptyShadowmap = true;
             useNativeRenderPass = false;
-            ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_EmptyMainLightShadowmapTexture, k_EmptyShadowMapDimensions, k_EmptyShadowMapDimensions, k_ShadowmapBufferBits, name: k_EmptyMainLightShadowMapTextureName);
+            ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_EmptyMainLightShadowmapTexture, k_EmptyShadowMapDimensions, k_EmptyShadowMapDimensions, m_ShadowCacheSystem.k_ShadowmapBufferBits, name: k_EmptyMainLightShadowMapTextureName);
 
             return true;
         }
@@ -168,7 +120,11 @@ namespace UnityEngine.Rendering.Universal.Internal
                 ConfigureTarget(m_EmptyMainLightShadowmapTexture);
             else
                 ConfigureTarget(m_MainLightShadowmapTexture);
-            ConfigureClear(ClearFlag.All, Color.black);
+
+            if (m_ShadowObjectFilter == ShadowObjectsFilter.AllObjects)
+                ConfigureClear(ClearFlag.All, Color.black);
+            else
+                ConfigureClear(ClearFlag.None, Color.black);
         }
 
         /// <inheritdoc/>
@@ -184,18 +140,6 @@ namespace UnityEngine.Rendering.Universal.Internal
 
             RenderMainLightCascadeShadowmap(ref context, ref renderingData);
             renderingData.commandBuffer.SetGlobalTexture(m_MainLightShadowmapID, m_MainLightShadowmapTexture.nameID);
-        }
-
-        void Clear()
-        {
-            for (int i = 0; i < m_MainLightShadowMatrices.Length; ++i)
-                m_MainLightShadowMatrices[i] = Matrix4x4.identity;
-
-            for (int i = 0; i < m_CascadeSplitDistances.Length; ++i)
-                m_CascadeSplitDistances[i] = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-
-            for (int i = 0; i < m_CascadeSlices.Length; ++i)
-                m_CascadeSlices[i].Clear();
         }
 
         void SetEmptyMainLightCascadeShadowmap(ref ScriptableRenderContext context, ref RenderingData renderingData)
@@ -237,16 +181,21 @@ namespace UnityEngine.Rendering.Universal.Internal
 
                 var settings = new ShadowDrawingSettings(cullResults, shadowLightIndex, BatchCullingProjectionType.Orthographic);
                 settings.useRenderingLayerMaskTest = UniversalRenderPipeline.asset.useRenderingLayers;
+                settings.objectsFilter = m_ShadowObjectFilter;
 
-                for (int cascadeIndex = 0; cascadeIndex < m_ShadowCasterCascadesCount; ++cascadeIndex)
+                if (renderingData.shadowData.shadowUpdateMode != ShadowUpdateMode.Cached)
                 {
-                    settings.splitData = m_CascadeSlices[cascadeIndex].splitData;
+                    for (int cascadeIndex = 0; cascadeIndex < m_ShadowCacheSystem.cascadesCount; ++cascadeIndex)
+                    {
+                        settings.splitData = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].splitData;
 
-                    Vector4 shadowBias = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, ref renderingData.shadowData, m_CascadeSlices[cascadeIndex].projectionMatrix, m_CascadeSlices[cascadeIndex].resolution);
-                    ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref shadowLight, shadowBias);
-                    CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
-                    ShadowUtils.RenderShadowSlice(cmd, ref context, ref m_CascadeSlices[cascadeIndex],
-                        ref settings, m_CascadeSlices[cascadeIndex].projectionMatrix, m_CascadeSlices[cascadeIndex].viewMatrix);
+                        Vector4 shadowBias = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, ref renderingData.shadowData,
+                            m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution);
+                        ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref shadowLight, shadowBias);
+                        CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
+                        ShadowUtils.RenderShadowSlice(cmd, ref context, ref m_ShadowCacheSystem.cascadeSlices[cascadeIndex],
+                            ref settings, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewMatrix);
+                    }
                 }
 
                 renderingData.shadowData.isKeywordSoftShadowsEnabled = shadowLight.light.shadows == LightShadows.Soft && renderingData.shadowData.supportsSoftShadows;
@@ -263,45 +212,46 @@ namespace UnityEngine.Rendering.Universal.Internal
             Light light = shadowLight.light;
             bool softShadows = shadowLight.light.shadows == LightShadows.Soft && shadowData.supportsSoftShadows;
 
-            int cascadeCount = m_ShadowCasterCascadesCount;
+            int cascadeCount = m_ShadowCacheSystem.cascadesCount;
             for (int i = 0; i < cascadeCount; ++i)
-                m_MainLightShadowMatrices[i] = m_CascadeSlices[i].shadowTransform;
+                m_ShadowCacheSystem.shadowMatrices[i] = m_ShadowCacheSystem.cascadeSlices[i].shadowTransform;
 
             // We setup and additional a no-op WorldToShadow matrix in the last index
             // because the ComputeCascadeIndex function in Shadows.hlsl can return an index
             // out of bounds. (position not inside any cascade) and we want to avoid branching
             Matrix4x4 noOpShadowMatrix = Matrix4x4.zero;
             noOpShadowMatrix.m22 = (SystemInfo.usesReversedZBuffer) ? 1.0f : 0.0f;
-            for (int i = cascadeCount; i <= k_MaxCascades; ++i)
-                m_MainLightShadowMatrices[i] = noOpShadowMatrix;
+            for (int i = cascadeCount; i <= m_ShadowCacheSystem.k_MaxCascades; ++i)
+                m_ShadowCacheSystem.shadowMatrices[i] = noOpShadowMatrix;
 
-            float invShadowAtlasWidth = 1.0f / renderTargetWidth;
-            float invShadowAtlasHeight = 1.0f / renderTargetHeight;
+            float invShadowAtlasWidth = 1.0f / m_ShadowCacheSystem.renderTargetWidth;
+            float invShadowAtlasHeight = 1.0f / m_ShadowCacheSystem.renderTargetHeight;
             float invHalfShadowAtlasWidth = 0.5f * invShadowAtlasWidth;
             float invHalfShadowAtlasHeight = 0.5f * invShadowAtlasHeight;
             float softShadowsProp = ShadowUtils.SoftShadowQualityToShaderProperty(light, softShadows);
 
-            ShadowUtils.GetScaleAndBiasForLinearDistanceFade(m_MaxShadowDistanceSq, m_CascadeBorder, out float shadowFadeScale, out float shadowFadeBias);
+            ShadowUtils.GetScaleAndBiasForLinearDistanceFade(m_ShadowCacheSystem.maxShadowDistanceSq, m_ShadowCacheSystem.cascadeBorder, out float shadowFadeScale, out float shadowFadeBias);
 
-            cmd.SetGlobalMatrixArray(MainLightShadowConstantBuffer._WorldToShadow, m_MainLightShadowMatrices);
+            cmd.SetGlobalMatrixArray(MainLightShadowConstantBuffer._WorldToShadow, m_ShadowCacheSystem.shadowMatrices);
             cmd.SetGlobalVector(MainLightShadowConstantBuffer._ShadowParams,
                 new Vector4(light.shadowStrength, softShadowsProp, shadowFadeScale, shadowFadeBias));
 
-            if (m_ShadowCasterCascadesCount > 1)
+            if (m_ShadowCacheSystem.cascadesCount > 1)
             {
+                var cascadeSplitDistances = m_ShadowCacheSystem.cascadeSplitDistances;
                 cmd.SetGlobalVector(MainLightShadowConstantBuffer._CascadeShadowSplitSpheres0,
-                    m_CascadeSplitDistances[0]);
+                    cascadeSplitDistances[0]);
                 cmd.SetGlobalVector(MainLightShadowConstantBuffer._CascadeShadowSplitSpheres1,
-                    m_CascadeSplitDistances[1]);
+                    cascadeSplitDistances[1]);
                 cmd.SetGlobalVector(MainLightShadowConstantBuffer._CascadeShadowSplitSpheres2,
-                    m_CascadeSplitDistances[2]);
+                    cascadeSplitDistances[2]);
                 cmd.SetGlobalVector(MainLightShadowConstantBuffer._CascadeShadowSplitSpheres3,
-                    m_CascadeSplitDistances[3]);
+                    cascadeSplitDistances[3]);
                 cmd.SetGlobalVector(MainLightShadowConstantBuffer._CascadeShadowSplitSphereRadii, new Vector4(
-                    m_CascadeSplitDistances[0].w * m_CascadeSplitDistances[0].w,
-                    m_CascadeSplitDistances[1].w * m_CascadeSplitDistances[1].w,
-                    m_CascadeSplitDistances[2].w * m_CascadeSplitDistances[2].w,
-                    m_CascadeSplitDistances[3].w * m_CascadeSplitDistances[3].w));
+                    cascadeSplitDistances[0].w * cascadeSplitDistances[0].w,
+                    cascadeSplitDistances[1].w * cascadeSplitDistances[1].w,
+                    cascadeSplitDistances[2].w * cascadeSplitDistances[2].w,
+                    cascadeSplitDistances[3].w * cascadeSplitDistances[3].w));
             }
 
             // Inside shader soft shadows are controlled through global keyword.
@@ -319,12 +269,12 @@ namespace UnityEngine.Rendering.Universal.Internal
 
                 cmd.SetGlobalVector(MainLightShadowConstantBuffer._ShadowmapSize, new Vector4(invShadowAtlasWidth,
                     invShadowAtlasHeight,
-                    renderTargetWidth, renderTargetHeight));
+                    m_ShadowCacheSystem.renderTargetWidth, m_ShadowCacheSystem.renderTargetHeight));
             }
         }
         private class PassData
         {
-            internal MainLightShadowCasterPass pass;
+            internal DynamicMainLightShadowCasterPass pass;
             internal RenderGraph graph;
 
             internal TextureHandle shadowmapTexture;

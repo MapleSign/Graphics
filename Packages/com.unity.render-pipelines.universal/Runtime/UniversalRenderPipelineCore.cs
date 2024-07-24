@@ -839,6 +839,13 @@ namespace UnityEngine.Rendering.Universal
         /// </summary>
         public List<int> resolution;
 
+        /// <summary>
+        /// Shadow update mode.
+        /// </summary>
+        public ShadowUpdateMode shadowUpdateMode;
+
+        public CascadeUpdateMode cascadeUpdateMode;
+
         internal bool isKeywordAdditionalLightShadowsEnabled;
         internal bool isKeywordSoftShadowsEnabled;
     }

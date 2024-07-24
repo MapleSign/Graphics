@@ -100,6 +100,34 @@ namespace UnityEngine.Rendering.Universal
     }
 
     /// <summary>
+    ///  This controls the update mode of shadows (use static shadow cache or not).
+    /// </summary>
+    public enum ShadowUpdateMode
+    {
+        /// <summary>
+        /// Use this to disable cache.
+        /// </summary>
+        Dynamic,
+
+        /// <summary>
+        /// Use cached static shadow only.
+        /// </summary>
+        Cached,
+
+        /// <summary>
+        /// Use both dynamic and cached static shadow.
+        /// </summary>
+        Mixed
+    }
+
+    public enum CascadeUpdateMode
+    {
+        Immediate,
+        Rolling,
+        Skip
+    }
+
+    /// <summary>
     /// This controls the size of the Light Cookie atlas texture for additional lights (point, spot).
     /// </summary>
     public enum LightCookieResolution
@@ -517,6 +545,9 @@ namespace UnityEngine.Rendering.Universal
         [SerializeField] bool m_ConservativeEnclosingSphere = false;
         [SerializeField] int m_NumIterationsEnclosingSphere = 64;
         [SerializeField] SoftShadowQuality m_SoftShadowQuality = SoftShadowQuality.Medium;
+
+        [SerializeField] ShadowUpdateMode m_ShadowUpdateMode = ShadowUpdateMode.Mixed;
+        [SerializeField] CascadeUpdateMode m_CascadeUpdateMode = CascadeUpdateMode.Rolling;
 
         // Light Cookie Settings
         [SerializeField] LightCookieResolution m_AdditionalLightsCookieResolution = LightCookieResolution._2048;
@@ -1372,6 +1403,18 @@ namespace UnityEngine.Rendering.Universal
         {
             get { return m_SoftShadowQuality; }
             set { m_SoftShadowQuality = value; }
+        }
+
+        public ShadowUpdateMode shadowUpdateMode
+        {
+            get { return m_ShadowUpdateMode; }
+            set { m_ShadowUpdateMode = value; }
+        }
+
+        public CascadeUpdateMode cascadeUpdateMode
+        {
+            get { return m_CascadeUpdateMode; }
+            set { m_CascadeUpdateMode = value; }
         }
 
         /// <summary>
