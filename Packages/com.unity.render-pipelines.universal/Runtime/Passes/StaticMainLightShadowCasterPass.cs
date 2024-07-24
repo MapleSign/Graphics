@@ -48,21 +48,6 @@ namespace UnityEngine.Rendering.Universal.Internal
             base.profilingSampler = new ProfilingSampler(nameof(StaticMainLightShadowCasterPass));
             renderPassEvent = evt;
 
-            if (clearDepthMaterial == null)
-            {
-                clearDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/ClearDepth"));
-            }
-
-            if (scrollDepthMaterial == null)
-            {
-                scrollDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/ScrollDepth"));
-            }
-
-            if (copyDepthMaterial == null)
-            {
-                copyDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/CopyDepth"));
-            }
-
             m_StaticMainLightShadowmapID = Shader.PropertyToID(k_StaticeMainLightShadowMapTextureName);
             m_StaticMainLightShadowmapTextures = new RTHandle[k_ShadowMapCount];
             m_ShadowCacheSystem = cacheSystem;
@@ -105,6 +90,21 @@ namespace UnityEngine.Rendering.Universal.Internal
         /// <seealso cref="RenderingData"/>
         public bool Setup(ref RenderingData renderingData)
         {
+            if (clearDepthMaterial == null)
+            {
+                clearDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/ClearDepth"));
+            }
+
+            if (scrollDepthMaterial == null)
+            {
+                scrollDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/ScrollDepth"));
+            }
+
+            if (copyDepthMaterial == null)
+            {
+                copyDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/CopyDepth"));
+            }
+
             if (renderingData.shadowData.shadowUpdateMode == ShadowUpdateMode.Dynamic)
                 return false;
 
