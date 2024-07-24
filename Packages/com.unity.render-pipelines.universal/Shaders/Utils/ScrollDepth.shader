@@ -43,11 +43,9 @@ Shader "Hidden/Universal Render Pipeline/ScrollDepth" {
             float Frag (Varyings i) : SV_DEPTH {
                 float2 uv = i.texcoord;
                 uv = uv * _UVDeform.xy + _UVDeform.zw;
-
-                uv = uv * (_Bound.zw - _Bound.xy) + _Bound.xy;
                 if (uv.x < _Bound.x || uv.x > _Bound.z || uv.y < _Bound.y || uv.y > _Bound.w)
                     discard;
-                float depth = SAMPLE_DEPTH_TEXTURE(_DepthMap, sampler_DepthMap, uv.xy);
+                float depth = LOAD_TEXTURE2D_X(_DepthMap, uv.xy);
                 // depth = Sample(uv.xy);
                 if (depth == 1.0)
                     discard;

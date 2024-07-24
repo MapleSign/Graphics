@@ -15,6 +15,7 @@ namespace UnityEngine.Rendering.Universal
 
         /// <summary>
         /// The view position in light space (with origin point (0, 0, 0)).
+        /// xy are tex coord, z is depth in view space
         /// </summary>
         public Vector3 viewPosLightSpace;
 
@@ -121,23 +122,26 @@ namespace UnityEngine.Rendering.Universal
             var fp = shadowSliceData.projectionMatrix.decomposeProjection;
             var texelStep = new Vector4((fp.right - fp.left) / shadowResolution, (fp.top - fp.bottom) / shadowResolution, shadowResolution / (fp.right - fp.left), shadowResolution / (fp.top - fp.bottom));
 
-            Vector4 axisZ = shadowSliceData.viewMatrix.GetRow(2);
-            shadowSliceData.viewMatrix.SetRow(2, -axisZ);
-            shadowSliceData.viewMatrix.m23 *= -1f;
+            var viewMatrix = shadowSliceData.viewMatrix;
+            viewMatrix.SetRow(2, -viewMatrix.GetRow(2));
+            viewMatrix.m23 *= -1f;
 
-            var pos = shadowSliceData.viewMatrix.inverse.MultiplyPoint(Vector3.zero);
+            var pos = viewMatrix.inverse.MultiplyPoint(Vector3.zero);
 
-            shadowSliceData.viewMatrix *= Matrix4x4.Translate(pos);
-            pos = shadowSliceData.viewMatrix.MultiplyPoint(pos);
-            pos.x = Mathf.Round(pos.x * texelStep.z) * texelStep.x;
-            pos.y = Mathf.Round(pos.y * texelStep.w) * texelStep.y;
-            shadowSliceData.viewPosLightSpace = pos;
+            viewMatrix *= Matrix4x4.Translate(pos);
+            pos = viewMatrix.MultiplyPoint(pos);
+            pos.x = Mathf.Round(pos.x * texelStep.z);
+            pos.y = Mathf.Round(pos.y * texelStep.w);
+            shadowSliceData.viewPosLightSpace = pos; // xy are tex coord, z is depth in view space
 
-            pos = shadowSliceData.viewMatrix.inverse.MultiplyPoint(pos);
-            shadowSliceData.viewMatrix *= Matrix4x4.Translate(-pos);
-            axisZ = shadowSliceData.viewMatrix.GetRow(2);
-            shadowSliceData.viewMatrix.SetRow(2, -axisZ);
-            shadowSliceData.viewMatrix.m23 *= -1f;
+            pos.x *= texelStep.x;
+            pos.y *= texelStep.y;
+
+            pos = viewMatrix.inverse.MultiplyPoint(pos);
+            viewMatrix *= Matrix4x4.Translate(-pos);
+            viewMatrix.SetRow(2, -viewMatrix.GetRow(2));
+            viewMatrix.m23 *= -1f;
+            shadowSliceData.viewMatrix = viewMatrix;
 
             cascadeSplitDistance = shadowSliceData.splitData.cullingSphere;
             shadowSliceData.offsetX = (cascadeIndex % 2) * shadowResolution;

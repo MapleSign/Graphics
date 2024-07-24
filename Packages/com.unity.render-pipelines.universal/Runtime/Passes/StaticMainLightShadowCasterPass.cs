@@ -254,6 +254,10 @@ namespace UnityEngine.Rendering.Universal.Internal
             var projMatrix = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix;
             var cmd = renderingData.commandBuffer;
 
+            var offsetX = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetX;
+            var offsetY = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetY;
+            var resolution = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution;
+
             Vector4 uvDeform, depthDeform;
 
             Vector4 dP = -lastViewPositions[cascadeIndex] + m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewPosLightSpace;
@@ -261,10 +265,10 @@ namespace UnityEngine.Rendering.Universal.Internal
             var fp1 = projMatrix.decomposeProjection;
 
             var dUV = new Vector4(
-                (fp1.right - fp1.left) / (fp0.right - fp0.left),
-                (fp1.top - fp1.bottom) / (fp0.top - fp0.bottom),
-                (fp1.left - fp0.left + dP.x) / (fp0.right - fp0.left),
-                (fp1.bottom - fp0.bottom + dP.y) / (fp0.top - fp0.bottom)
+                resolution,
+                resolution,
+                dP.x + offsetX,
+                dP.y + offsetY
                 );
             uvDeform = dUV;
 
@@ -275,14 +279,11 @@ namespace UnityEngine.Rendering.Universal.Internal
                 );
             depthDeform = dDepth;
 
-            var offsetX = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetX;
-            var offsetY = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetY;
-            var resolution = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution;
             var bound = new Vector4(
-                (float)offsetX / renderingData.shadowData.mainLightShadowmapWidth,
-                (float)offsetY / renderingData.shadowData.mainLightShadowmapHeight,
-                (float)(offsetX + resolution) / renderingData.shadowData.mainLightShadowmapWidth,
-                (float)(offsetY + resolution)/ renderingData.shadowData.mainLightShadowmapHeight
+                offsetX,
+                offsetY,
+                offsetX + resolution,
+                offsetY + resolution
                 );
 
             cmd.SetGlobalVector("_Bound", bound);
