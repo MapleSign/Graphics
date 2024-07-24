@@ -30,6 +30,7 @@ namespace UnityEngine.Rendering.Universal.Internal
         void NextShadowMap() => m_ShadowMapIndex = (m_ShadowMapIndex + 1) % k_ShadowMapCount;
 
         bool[] isLastFrameAvailables;
+        Vector3[] lastViewPositions;
         Matrix4x4[] lastShadowViewMatrices;
         Matrix4x4[] lastShadowProjMatrices;
         int scrollDepthMapId;
@@ -58,6 +59,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             {
                 isLastFrameAvailables[i] = false;
             }
+            lastViewPositions = new Vector3[cacheSystem.k_MaxCascades];
             lastShadowViewMatrices = new Matrix4x4[cacheSystem.k_MaxCascades];
             lastShadowProjMatrices = new Matrix4x4[cacheSystem.k_MaxCascades];
         }
@@ -123,7 +125,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             for (int i = 0; i < k_ShadowMapCount; i++)
                 ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_StaticMainLightShadowmapTextures[i],
                     m_ShadowCacheSystem.renderTargetWidth, m_ShadowCacheSystem.renderTargetHeight, m_ShadowCacheSystem.k_ShadowmapBufferBits,
-                    name: k_StaticeMainLightShadowMapTextureName + i);
+                    name: k_StaticeMainLightShadowMapTextureName + i, filterMode: FilterMode.Point);
 
             return true;
         }
@@ -227,6 +229,7 @@ namespace UnityEngine.Rendering.Universal.Internal
                         {
                             ScrollDepth(ref context, ref renderingData, cascadeIndex);
                         }
+                        lastViewPositions[cascadeIndex] = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewPosLightSpace;
                         lastShadowViewMatrices[cascadeIndex] = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewMatrix;
                         lastShadowProjMatrices[cascadeIndex] = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix;
 
@@ -253,7 +256,7 @@ namespace UnityEngine.Rendering.Universal.Internal
 
             Vector4 uvDeform, depthDeform;
 
-            Vector4 dP = lastShadowViewMatrices[cascadeIndex] * viewMatrix.inverse * new Vector4(0f, 0f, 0f, 1f);
+            Vector4 dP = -lastViewPositions[cascadeIndex] + m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewPosLightSpace;
             var fp0 = lastShadowProjMatrices[cascadeIndex].decomposeProjection;
             var fp1 = projMatrix.decomposeProjection;
 
@@ -276,18 +279,27 @@ namespace UnityEngine.Rendering.Universal.Internal
             var offsetY = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetY;
             var resolution = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution;
             var bound = new Vector4(
-                    (float)offsetX / renderingData.shadowData.mainLightShadowmapWidth,
-                    (float)offsetY / renderingData.shadowData.mainLightShadowmapHeight,
-                    (float)(offsetX + resolution) / renderingData.shadowData.mainLightShadowmapWidth,
-                    (float)(offsetY + resolution)/ renderingData.shadowData.mainLightShadowmapHeight
+                (float)offsetX / renderingData.shadowData.mainLightShadowmapWidth,
+                (float)offsetY / renderingData.shadowData.mainLightShadowmapHeight,
+                (float)(offsetX + resolution) / renderingData.shadowData.mainLightShadowmapWidth,
+                (float)(offsetY + resolution)/ renderingData.shadowData.mainLightShadowmapHeight
                 );
 
             cmd.SetGlobalVector("_Bound", bound);
             cmd.SetGlobalVector("_UVDeform", uvDeform);
             cmd.SetGlobalVector("_DepthDeform", depthDeform);
             cmd.SetGlobalTexture(scrollDepthMapId, lastTexture);
+            cmd.SetGlobalVector("_DepthMap_TexelSize",
+                new Vector4(
+                    1f / renderingData.shadowData.mainLightShadowmapWidth,
+                    1f / renderingData.shadowData.mainLightShadowmapHeight,
+                    renderingData.shadowData.mainLightShadowmapWidth,
+                    renderingData.shadowData.mainLightShadowmapHeight
+                    )
+                );
             Blitter.BlitTexture(cmd, lastTexture, new Vector4(1f, 1f, 0f, 0f), scrollDepthMaterial, 0);
             context.ExecuteCommandBuffer(cmd);
+            cmd.Clear();
         }
 
         private class PassData

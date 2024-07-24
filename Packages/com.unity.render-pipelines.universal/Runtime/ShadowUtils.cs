@@ -14,6 +14,11 @@ namespace UnityEngine.Rendering.Universal
         public Matrix4x4 viewMatrix;
 
         /// <summary>
+        /// The view position in light space (with origin point (0, 0, 0)).
+        /// </summary>
+        public Vector3 viewPosLightSpace;
+
+        /// <summary>
         /// The projection matrix.
         /// </summary>
         public Matrix4x4 projectionMatrix;
@@ -112,6 +117,27 @@ namespace UnityEngine.Rendering.Universal
             bool success = cullResults.ComputeDirectionalShadowMatricesAndCullingPrimitives(shadowLightIndex,
                 cascadeIndex, shadowData.mainLightShadowCascadesCount, shadowData.mainLightShadowCascadesSplit, shadowResolution, shadowNearPlane, out shadowSliceData.viewMatrix, out shadowSliceData.projectionMatrix,
                 out shadowSliceData.splitData);
+
+            var fp = shadowSliceData.projectionMatrix.decomposeProjection;
+            var texelStep = new Vector4((fp.right - fp.left) / shadowResolution, (fp.top - fp.bottom) / shadowResolution, shadowResolution / (fp.right - fp.left), shadowResolution / (fp.top - fp.bottom));
+
+            Vector4 axisZ = shadowSliceData.viewMatrix.GetRow(2);
+            shadowSliceData.viewMatrix.SetRow(2, -axisZ);
+            shadowSliceData.viewMatrix.m23 *= -1f;
+
+            var pos = shadowSliceData.viewMatrix.inverse.MultiplyPoint(Vector3.zero);
+
+            shadowSliceData.viewMatrix *= Matrix4x4.Translate(pos);
+            pos = shadowSliceData.viewMatrix.MultiplyPoint(pos);
+            pos.x = Mathf.Round(pos.x * texelStep.z) * texelStep.x;
+            pos.y = Mathf.Round(pos.y * texelStep.w) * texelStep.y;
+            shadowSliceData.viewPosLightSpace = pos;
+
+            pos = shadowSliceData.viewMatrix.inverse.MultiplyPoint(pos);
+            shadowSliceData.viewMatrix *= Matrix4x4.Translate(-pos);
+            axisZ = shadowSliceData.viewMatrix.GetRow(2);
+            shadowSliceData.viewMatrix.SetRow(2, -axisZ);
+            shadowSliceData.viewMatrix.m23 *= -1f;
 
             cascadeSplitDistance = shadowSliceData.splitData.cullingSphere;
             shadowSliceData.offsetX = (cascadeIndex % 2) * shadowResolution;
@@ -477,8 +503,9 @@ namespace UnityEngine.Rendering.Universal
         /// <param name="anisoLevel">Anisotropic filtering level of the RTHandle to match.</param>
         /// <param name="mipMapBias">Bias applied to mipmaps during filtering of the RTHandle to match.</param>
         /// <param name="name">Name of the RTHandle of the RTHandle to match.</param>
+        /// <param name="filterMode">Filter mode of the RTHandle to match.</param>
         /// <returns>If the RTHandle needs to be re-allocated</returns>
-        public static bool ShadowRTNeedsReAlloc(RTHandle handle, int width, int height, int bits, int anisoLevel, float mipMapBias, string name)
+        public static bool ShadowRTNeedsReAlloc(RTHandle handle, int width, int height, int bits, int anisoLevel, float mipMapBias, string name, FilterMode filterMode)
         {
             if (handle == null || handle.rt == null)
                 return true;
@@ -490,11 +517,11 @@ namespace UnityEngine.Rendering.Universal
             }
             else
             {
-                if (handle.rt.filterMode != FilterMode.Bilinear)
+                if (handle.rt.filterMode != filterMode)
                     return true;
             }
 
-            TextureDesc shadowDesc = RTHandleResourcePool.CreateTextureDesc(descriptor, TextureSizeMode.Explicit, anisoLevel, mipMapBias, m_ForceShadowPointSampling ? FilterMode.Point : FilterMode.Bilinear, TextureWrapMode.Clamp, name);
+            TextureDesc shadowDesc = RTHandleResourcePool.CreateTextureDesc(descriptor, TextureSizeMode.Explicit, anisoLevel, mipMapBias, m_ForceShadowPointSampling ? FilterMode.Point : filterMode, TextureWrapMode.Clamp, name);
             return RenderingUtils.RTHandleNeedsReAlloc(handle, shadowDesc, false);
         }
 
@@ -508,10 +535,10 @@ namespace UnityEngine.Rendering.Universal
         /// <param name="mipMapBias">Bias applied to mipmaps during filtering of the Shadow Map.</param>
         /// <param name="name">Name of the Shadow Map.</param>
         /// <returns>If an RTHandle for the Shadow Map</returns>
-        public static RTHandle AllocShadowRT(int width, int height, int bits, int anisoLevel, float mipMapBias, string name)
+        public static RTHandle AllocShadowRT(int width, int height, int bits, int anisoLevel, float mipMapBias, string name, FilterMode filterMode)
         {
             var rtd = GetTemporaryShadowTextureDescriptor(width, height, bits);
-            return RTHandles.Alloc(rtd, m_ForceShadowPointSampling ? FilterMode.Point : FilterMode.Bilinear, TextureWrapMode.Clamp, isShadowMap: true, name: name);
+            return RTHandles.Alloc(rtd, m_ForceShadowPointSampling ? FilterMode.Point : filterMode, TextureWrapMode.Clamp, isShadowMap: true, name: name);
         }
 
         /// <summary>
@@ -525,13 +552,14 @@ namespace UnityEngine.Rendering.Universal
         /// <param name="anisoLevel">Anisotropic filtering level of the Shadow Map.</param>
         /// <param name="mipMapBias">Bias applied to mipmaps during filtering of the Shadow Map.</param>
         /// <param name="name">Name of the Shadow Map.</param>
+        /// <param name="filterMode">Filter mode of the Shadow Map.</param>
         /// <returns>If the RTHandle was re-allocated</returns>
-        public static bool ShadowRTReAllocateIfNeeded(ref RTHandle handle, int width, int height, int bits, int anisoLevel = 1, float mipMapBias = 0, string name = "")
+        public static bool ShadowRTReAllocateIfNeeded(ref RTHandle handle, int width, int height, int bits, int anisoLevel = 1, float mipMapBias = 0, string name = "", FilterMode filterMode = FilterMode.Bilinear)
         {
-            if (ShadowRTNeedsReAlloc(handle, width, height, bits, anisoLevel, mipMapBias, name))
+            if (ShadowRTNeedsReAlloc(handle, width, height, bits, anisoLevel, mipMapBias, name, filterMode))
             {
                 handle?.Release();
-                handle = AllocShadowRT(width, height, bits, anisoLevel, mipMapBias, name);
+                handle = AllocShadowRT(width, height, bits, anisoLevel, mipMapBias, name, filterMode);
                 return true;
             }
             return false;

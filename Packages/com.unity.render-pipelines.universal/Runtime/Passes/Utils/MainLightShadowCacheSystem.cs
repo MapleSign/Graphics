@@ -175,8 +175,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             m_MaxShadowDistanceSq = renderingData.cameraData.maxShadowDistance * renderingData.cameraData.maxShadowDistance;
             m_CascadeBorder = renderingData.shadowData.mainLightShadowCascadeBorder;
 
-            if (renderingData.shadowData.supportsShadowScrolling)
-                m_ScrollRecorder.Setup(ref renderingData);
+            m_ScrollRecorder.Setup(ref renderingData);
 
             m_StaticPassSuccess = m_StaticPass.Setup(ref renderingData);
             m_DynamicPassSuccess = m_DynamicPass.Setup(ref renderingData);
