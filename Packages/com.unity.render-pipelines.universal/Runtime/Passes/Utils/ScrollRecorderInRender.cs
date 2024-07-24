@@ -108,13 +108,15 @@ public class ScrollRecorderInRender
         {
             for (int cascadeIndex = 0; cascadeIndex < cacheSystem.cascadesCount; cascadeIndex++)
             {
-                var pos = cacheSystem.cascadeSlices[cascadeIndex].viewMatrix.MultiplyPoint(boundingSpheres[i].position);
-                pos = cacheSystem.cascadeSlices[cascadeIndex].projectionMatrix.MultiplyPoint(pos);
+                var pos = boundingSpheres[i].position;
+                var radius = boundingSpheres[i].radius;
+                Vector3 cullingSphereCenter = cacheSystem.cascadeSplitDistances[cascadeIndex];
+                float cullingSphereRadius = cacheSystem.cascadeSplitDistances[cascadeIndex].w;
+                float distance = Vector3.Distance(pos, cullingSphereCenter);
 
-                var fpCenter = new Vector3(-1f, -1f, -1f);
-                var fpSize = new Vector3(2f, 2f, 2f);
-                Rect frustumRect = new Rect(fpCenter, fpSize);
-                var visibility = IntersectRectSphere(frustumRect, new Vector3(pos.x, pos.y, boundingSpheres[i].radius / (frustumPlanes[cascadeIndex].right)));
+                Visibility visibility = distance < (cullingSphereRadius - radius) * 0.8f ? Visibility.Complete :
+                    distance >= (cullingSphereRadius + radius) * 1.8f ? Visibility.Invisible : Visibility.Partial;
+
                 if (lastVisibilities[i, cascadeIndex] != Visibility.Complete && visibility != Visibility.Invisible)
                 {
                     newLayerValues[i] = k_DefaultLayer;
@@ -129,7 +131,7 @@ public class ScrollRecorderInRender
     {
         Visibility v;
         if (a1 <= b0 || b1 <= a0) v = Visibility.Invisible;
-        else if (a0 <= b0 && b0 <= a1) v = Visibility.Complete;
+        else if (a0 <= b0 && b1 <= a1) v = Visibility.Complete;
         else v = Visibility.Partial;
 
         return v;
