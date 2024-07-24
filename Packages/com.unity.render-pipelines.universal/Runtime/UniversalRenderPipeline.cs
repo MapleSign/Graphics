@@ -667,6 +667,7 @@ namespace UnityEngine.Rendering.Universal
 
                 // Do NOT use cameraData after 'InitializeRenderingData'. CameraData state may diverge otherwise.
                 // RenderingData takes a copy of the CameraData.
+                cameraData.cullParams = cullingParameters;
                 var cullResults = context.Cull(ref cullingParameters);
                 InitializeRenderingData(asset, ref cameraData, ref cullResults, cmd, out var renderingData);
 #if ADAPTIVE_PERFORMANCE_2_0_0_OR_NEWER

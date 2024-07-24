@@ -107,7 +107,7 @@ namespace UnityEngine.Rendering.Universal.Internal
 
             m_StaticPass = new(evt, this);
             m_DynamicPass = new(evt, this);
-            m_CopyDepthPass = new(evt, copyDepthMaterial, shouldClear: true, useDestView: true);
+            m_CopyDepthPass = new(evt, copyDepthMaterial, shouldClear: true, copyToDepth: true, useDestView: true);
 
             m_ShadowTracker = new ShadowTracker();
             cascadeUpdateData = new CascadeUpdateData();

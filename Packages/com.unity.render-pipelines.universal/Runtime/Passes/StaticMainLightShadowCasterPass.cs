@@ -168,7 +168,18 @@ namespace UnityEngine.Rendering.Universal.Internal
 
         void RenderMainLightCascadeShadowmap(ref ScriptableRenderContext context, ref RenderingData renderingData)
         {
-            var cullResults = renderingData.cullResults;
+            CullingResults cullResults;
+            if (renderingData.shadowData.supportsShadowScrolling)
+            {
+                var cullParams = renderingData.cameraData.cullParams;
+                cullParams.cullingMask &= ~(uint)(1 << LayerMask.NameToLayer("Ignore Static Shadow"));
+                cullResults = context.Cull(ref cullParams);
+            }
+            else
+            {
+                cullResults = renderingData.cullResults;
+            }
+
             var lightData = renderingData.lightData;
             var shadowData = renderingData.shadowData;
 

@@ -748,6 +748,8 @@ namespace UnityEngine.Rendering.Universal
         /// Camera at the top of the overlay camera stack
         /// </summary>
         public Camera baseCamera;
+
+        public ScriptableCullingParameters cullParams;
     }
 
     /// <summary>

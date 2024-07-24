@@ -133,6 +133,12 @@ namespace UnityEngine.Rendering.Universal
             /// </summary>
             [Reload("Shaders/PostProcessing/LensFlareDataDriven.shader")]
             public Shader dataDrivenLensFlare;
+
+            [Reload("Shaders/Utils/ClearDepth.shader")]
+            public Shader clearDepthPS;
+
+            [Reload("Shaders/Utils/ScrollDepth.shader")]
+            public Shader scrollDepthPS;
         }
 
         /// <summary>
