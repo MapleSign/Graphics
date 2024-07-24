@@ -845,6 +845,8 @@ namespace UnityEngine.Rendering.Universal
         public ShadowUpdateMode shadowUpdateMode;
 
         public CascadeUpdateMode cascadeUpdateMode;
+        public int cascadeRollingStart;
+        public List<int> cascadeSkipFrames;
 
         internal bool isKeywordAdditionalLightShadowsEnabled;
         internal bool isKeywordSoftShadowsEnabled;

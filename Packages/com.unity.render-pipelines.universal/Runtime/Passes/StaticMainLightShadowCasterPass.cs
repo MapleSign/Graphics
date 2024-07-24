@@ -9,6 +9,8 @@ namespace UnityEngine.Rendering.Universal.Internal
     /// </summary>
     public class StaticMainLightShadowCasterPass : ScriptableRenderPass
     {
+        static Material clearDepthMaterial;
+
         MainLightShadowCacheSystem m_ShadowCacheSystem;
 
         private RTHandle m_EmptyMainLightShadowmapTexture;
@@ -20,9 +22,6 @@ namespace UnityEngine.Rendering.Universal.Internal
         private const string k_StaticeMainLightShadowMapTextureName = "_StaticMainLightShadowmapTexture";
 
         bool m_CreateEmptyShadowmap;
-
-        ShadowTracker m_ShadowTracker;
-        bool m_IsDirty = true;
 
         ProfilingSampler m_ProfilingSetupSampler = new ProfilingSampler("Setup Static Main Shadowmap");
 
@@ -36,8 +35,12 @@ namespace UnityEngine.Rendering.Universal.Internal
             base.profilingSampler = new ProfilingSampler(nameof(StaticMainLightShadowCasterPass));
             renderPassEvent = evt;
 
+            if (clearDepthMaterial == null)
+            {
+                clearDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/Clear Depth"));
+            }
+
             m_StaticMainLightShadowmapID = Shader.PropertyToID(k_StaticeMainLightShadowMapTextureName);
-            m_ShadowTracker = new ShadowTracker();
             m_ShadowCacheSystem = cacheSystem;
         }
 
@@ -75,8 +78,6 @@ namespace UnityEngine.Rendering.Universal.Internal
             useNativeRenderPass = true;
             ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_StaticMainLightShadowmapTexture, m_ShadowCacheSystem.renderTargetWidth, m_ShadowCacheSystem.renderTargetHeight, m_ShadowCacheSystem.k_ShadowmapBufferBits, name: k_StaticeMainLightShadowMapTextureName);
 
-            m_IsDirty = m_ShadowTracker.CameraChanged(renderingData.cameraData.camera);
-
             return true;
         }
 
@@ -100,10 +101,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             else
                 ConfigureTarget(m_StaticMainLightShadowmapTexture);
 
-            if (m_IsDirty)
-                ConfigureClear(ClearFlag.All, Color.black);
-            else
-                ConfigureClear(ClearFlag.None, Color.black);
+            ConfigureClear(ClearFlag.None, Color.black);
         }
 
         /// <inheritdoc/>
@@ -116,8 +114,7 @@ namespace UnityEngine.Rendering.Universal.Internal
                 return;
             }
 
-            if (m_IsDirty)
-                RenderMainLightCascadeShadowmap(ref context, ref renderingData);
+            RenderMainLightCascadeShadowmap(ref context, ref renderingData);
             renderingData.commandBuffer.SetGlobalTexture(m_StaticMainLightShadowmapID, m_StaticMainLightShadowmapTexture.nameID);
         }
 
@@ -142,7 +139,17 @@ namespace UnityEngine.Rendering.Universal.Internal
 
                 for (int cascadeIndex = 0; cascadeIndex < m_ShadowCacheSystem.cascadesCount; ++cascadeIndex)
                 {
+                    if (!m_ShadowCacheSystem.cascadeStates[cascadeIndex].shouldStaticUpdate)
+                        continue;
+
                     settings.splitData = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].splitData;
+
+                    cmd.SetViewport(new Rect(m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetX, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetY,
+                        m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution));
+                    cmd.SetViewProjectionMatrices(m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewMatrix);
+                    cmd.DrawProcedural(Matrix4x4.identity, clearDepthMaterial, 0, MeshTopology.Triangles, 3);
+                    context.ExecuteCommandBuffer(cmd);
+                    cmd.Clear();
 
                     Vector4 shadowBias = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, ref renderingData.shadowData,
                         m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution);

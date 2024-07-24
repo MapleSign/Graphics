@@ -187,6 +187,9 @@ namespace UnityEngine.Rendering.Universal.Internal
                 {
                     for (int cascadeIndex = 0; cascadeIndex < m_ShadowCacheSystem.cascadesCount; ++cascadeIndex)
                     {
+                        if (!m_ShadowCacheSystem.cascadeStates[cascadeIndex].shouldDynamicUpdate)
+                            continue;
+
                         settings.splitData = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].splitData;
 
                         Vector4 shadowBias = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, ref renderingData.shadowData,

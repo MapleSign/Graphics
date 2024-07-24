@@ -1,20 +1,21 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 public class ShadowTracker
 {
     public class CameraTrackData
     {
         public string name;
-        public Vector3 position;
-        public Quaternion rotation;
+        public Matrix4x4 view, proj;
     }
 
     string lastCamera = "";
     List<CameraTrackData> cameras = new List<CameraTrackData>();
 
-    public bool CameraChanged(Camera cam)
+    public bool CameraChanged(ref CameraData data)
     {
+        var cam = data.camera;
         bool changed = false;
         if (cam.name != lastCamera)
         {
@@ -26,14 +27,14 @@ public class ShadowTracker
         if (index == -1)
         {
             cameras.Add(new CameraTrackData() { 
-                name = cam.name, position = cam.transform.position, rotation = cam.transform.rotation 
+                name = cam.name, view = data.GetViewMatrix(), proj = data.GetProjectionMatrixNoJitter()
             });
             changed = true;
         }
-        else if (cam.transform.position != cameras[index].position || cam.transform.rotation != cameras[index].rotation)
+        else if (data.GetViewMatrix() != cameras[index].view || data.GetProjectionMatrixNoJitter() != cameras[index].proj)
         {
-            cameras[index].position = cam.transform.position;
-            cameras[index].rotation = cam.transform.rotation;
+            cameras[index].view = data.GetViewMatrix();
+            cameras[index].proj = data.GetProjectionMatrix();
             changed = true;
         }
 

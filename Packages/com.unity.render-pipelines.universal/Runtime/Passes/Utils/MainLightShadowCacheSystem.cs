@@ -8,8 +8,19 @@ namespace UnityEngine.Rendering.Universal.Internal
     /// </summary>
     public struct CascadeState
     {
-        bool isDirty;
+        public bool isDirty;
         public int elapsed;
+        public ShadowObjectsFilter filter;
+
+        public bool shouldStaticUpdate => filter != ShadowObjectsFilter.DynamicOnly && elapsed == 0 && isDirty;
+        public bool shouldDynamicUpdate => filter != ShadowObjectsFilter.StaticOnly && elapsed == 0;
+
+        public void Clear()
+        {
+            isDirty = true;
+            elapsed = 0;
+            filter = ShadowObjectsFilter.AllObjects;
+        }
     }
 
     public class MainLightShadowCacheSystem
@@ -57,16 +68,25 @@ namespace UnityEngine.Rendering.Universal.Internal
         public StaticMainLightShadowCasterPass staticPass { get => m_StaticPass; }
         public DynamicMainLightShadowCasterPass dynamicPass { get => m_DynamicPass; }
 
+        ShadowTracker m_ShadowTracker;
+        bool m_IsDirty = true;
+
         public MainLightShadowCacheSystem(RenderPassEvent evt, Material copyDepthMaterial)
         {
             m_MainLightShadowMatrices = new Matrix4x4[k_MaxCascades + 1];
             m_CascadeSlices = new ShadowSliceData[k_MaxCascades];
             m_CascadeSplitDistances = new Vector4[k_MaxCascades];
             m_CascadeStates = new CascadeState[k_MaxCascades];
+            for (int i = 0; i < k_MaxCascades; i++)
+            {
+                m_CascadeStates[i].Clear();
+            }
 
             m_StaticPass = new(evt, this);
             m_DynamicPass = new(evt, this);
             m_CopyDepthPass = new(evt, copyDepthMaterial, shouldClear: true, useDestView: true);
+
+            m_ShadowTracker = new ShadowTracker();
         }
 
         public void Dispose()
@@ -80,10 +100,11 @@ namespace UnityEngine.Rendering.Universal.Internal
             if (!renderingData.shadowData.mainLightShadowsEnabled)
                 return false;
 
+            m_EmptyRendering = false;
+
             if (!renderingData.shadowData.supportsMainLightShadows)
                 m_EmptyRendering = true;
 
-            //Clear();
             int shadowLightIndex = renderingData.lightData.mainLightIndex;
             if (shadowLightIndex == -1)
                 m_EmptyRendering = true;
@@ -111,12 +132,15 @@ namespace UnityEngine.Rendering.Universal.Internal
                 renderingData.shadowData.mainLightShadowmapHeight >> 1 :
                 renderingData.shadowData.mainLightShadowmapHeight;
 
-            SetupCascadeStates(ref renderingData.shadowData);
+            SetupCascadeStates(ref renderingData);
             for (int cascadeIndex = 0; cascadeIndex < m_ShadowCasterCascadesCount; ++cascadeIndex)
             {
-                bool success = ShadowUtils.ExtractDirectionalLightMatrix(ref renderingData.cullResults, ref renderingData.shadowData,
-                    shadowLightIndex, cascadeIndex, renderTargetWidth, renderTargetHeight, shadowResolution, light.shadowNearPlane,
-                    out m_CascadeSplitDistances[cascadeIndex], out m_CascadeSlices[cascadeIndex]);
+                bool success = true;
+                // Only update the shadow data when shadow map should be updated.
+                if (m_CascadeStates[cascadeIndex].shouldStaticUpdate)
+                    success = ShadowUtils.ExtractDirectionalLightMatrix(ref renderingData.cullResults, ref renderingData.shadowData,
+                        shadowLightIndex, cascadeIndex, renderTargetWidth, renderTargetHeight, shadowResolution, light.shadowNearPlane,
+                        out m_CascadeSplitDistances[cascadeIndex], out m_CascadeSlices[cascadeIndex]);
 
                 if (!success)
                     m_EmptyRendering = true;
@@ -132,9 +156,51 @@ namespace UnityEngine.Rendering.Universal.Internal
             return m_StaticPassSuccess || m_DynamicPassSuccess;
         }
 
-        void SetupCascadeStates(ref ShadowData data)
+        void SetupCascadeStates(ref RenderingData renderingData)
         {
+            if (renderingData.shadowData.shadowUpdateMode == ShadowUpdateMode.Dynamic)
+            {
+                for (int i = 0; i < m_ShadowCasterCascadesCount; i++)
+                {
+                    m_CascadeStates[i].Clear();
+                }
+            }
+            else
+            {
+                m_IsDirty = m_ShadowTracker.CameraChanged(ref renderingData.cameraData);
+                for (int i = 0; i < m_ShadowCasterCascadesCount; i++)
+                {
+                    // shouldUpdate means it has just updated last frame, so we reset it to not dirty.
+                    if (m_CascadeStates[i].shouldStaticUpdate)
+                        m_CascadeStates[i].isDirty = false;
 
+                    m_CascadeStates[i].isDirty |= m_IsDirty;
+
+                    int elapsed = cascadeStates[i].elapsed;
+                    m_CascadeStates[i].filter = ShadowObjectsFilter.AllObjects;
+                    m_CascadeStates[i].elapsed = 0;
+
+                    switch (renderingData.shadowData.cascadeUpdateMode)
+                    {
+                        case CascadeUpdateMode.Immediate:
+                            break;
+                        case CascadeUpdateMode.Rolling:
+                            if (i >= renderingData.shadowData.cascadeRollingStart)
+                            {
+                                m_CascadeStates[i].filter = ShadowObjectsFilter.StaticOnly;
+                                m_CascadeStates[i].elapsed = elapsed > 0 ? elapsed - 1 : i - renderingData.shadowData.cascadeRollingStart + 1;
+                            }
+                            break;
+                        case CascadeUpdateMode.Skip:
+                            if (renderingData.shadowData.cascadeSkipFrames[i] > 0)
+                            {
+                                m_CascadeStates[i].filter = ShadowObjectsFilter.StaticOnly;
+                                m_CascadeStates[i].elapsed = elapsed > 0 ? elapsed - 1 : renderingData.shadowData.cascadeSkipFrames[i];
+                            }
+                            break;
+                    }
+                }
+            }
         }
 
         public void Enqueue(ScriptableRenderer renderer)
