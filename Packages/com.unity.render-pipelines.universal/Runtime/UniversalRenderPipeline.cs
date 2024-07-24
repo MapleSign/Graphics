@@ -1472,6 +1472,7 @@ namespace UnityEngine.Rendering.Universal
             shadowData.cascadeUpdateMode = settings.cascadeUpdateMode;
             shadowData.cascadeRollingStart = 2;
             shadowData.cascadeSkipFrames = new List<int> { 0, 0, 1, 2 };
+            shadowData.supportsShadowScrolling = settings.supportsShadowScrolling;
 
             // This will be setup in AdditionalLightsShadowCasterPass.
             shadowData.isKeywordAdditionalLightShadowsEnabled = false;

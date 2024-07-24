@@ -1,4 +1,4 @@
-Shader "Hidden/Universal Render Pipeline/Clear Depth"
+Shader "Hidden/Universal Render Pipeline/ClearDepth"
 {
     SubShader
     {

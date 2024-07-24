@@ -848,6 +848,8 @@ namespace UnityEngine.Rendering.Universal
         public int cascadeRollingStart;
         public List<int> cascadeSkipFrames;
 
+        public bool supportsShadowScrolling;
+
         internal bool isKeywordAdditionalLightShadowsEnabled;
         internal bool isKeywordSoftShadowsEnabled;
     }

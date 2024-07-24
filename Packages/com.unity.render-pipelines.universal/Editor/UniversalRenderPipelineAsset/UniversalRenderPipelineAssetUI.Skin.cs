@@ -84,6 +84,7 @@ namespace UnityEditor.Rendering.Universal
             public static GUIContent supportsSoftShadows = EditorGUIUtility.TrTextContent("Soft Shadows", "If enabled pipeline will perform shadow filtering. Otherwise all lights that cast shadows will fallback to perform a single shadow sample.");
             public static GUIContent shadowUpdateMode = EditorGUIUtility.TrTextContent("Update Mode", "Controls the use of static shadow cache.");
             public static GUIContent cascadeUpdateMode = EditorGUIUtility.TrTextContent("Cascade Update Mode", "Controls the cascade update mode.");
+            public static GUIContent supportsShadowScrolling = EditorGUIUtility.TrTextContent("Shadow Scrolling", "If enabled static cache will use shadow scrolling to update.");
             public static GUIContent conservativeEnclosingSphere = EditorGUIUtility.TrTextContent("Conservative Enclosing Sphere", "Enable this option to improve shadow frustum culling and prevent Unity from excessively culling shadows in the corners of the shadow cascades. Disable this option only for compatibility purposes of existing projects created in previous Unity versions.");
 
             public static GUIContent softShadowsQuality = EditorGUIUtility.TrTextContent("Quality", "Default shadow quality setting for Lights.");

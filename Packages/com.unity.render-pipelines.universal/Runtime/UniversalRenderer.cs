@@ -454,7 +454,7 @@ namespace UnityEngine.Rendering.Universal
                         }
                         case DebugFullScreenMode.StaticMainLightShadowMap:
                         {
-                            DebugHandler.SetDebugRenderTarget(m_MainLightShadowCacheSystem.staticPass.m_StaticMainLightShadowmapTexture, normalizedRect, false);
+                            DebugHandler.SetDebugRenderTarget(m_MainLightShadowCacheSystem.staticPass.nowTexture, normalizedRect, false);
                             break;
                         }
                         case DebugFullScreenMode.ReflectionProbeAtlas:

@@ -379,6 +379,8 @@ namespace UnityEditor.Rendering.Universal
                 var cascadeUpdateMode = (CascadeUpdateMode)EditorGUILayout.EnumPopup(Styles.cascadeUpdateMode, serialized.cascadeUpdateModeProp.GetEnumValue<CascadeUpdateMode>());
                 serialized.cascadeUpdateModeProp.SetEnumValue(cascadeUpdateMode);
 
+                EditorGUILayout.PropertyField(serialized.shadowScrollingSupportedProp, Styles.supportsShadowScrolling);
+
                 EditorGUI.indentLevel--;
             }
         }

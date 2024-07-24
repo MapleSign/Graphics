@@ -57,6 +57,7 @@ namespace UnityEditor.Rendering.Universal
         public SerializedProperty softShadowQualityProp { get; }
         public SerializedProperty shadowUpdateModeProp { get; }
         public SerializedProperty cascadeUpdateModeProp { get; }
+        public SerializedProperty shadowScrollingSupportedProp { get; }
         public SerializedProperty conservativeEnclosingSphereProp { get; }
 
         public SerializedProperty srpBatcher { get; }
@@ -136,6 +137,7 @@ namespace UnityEditor.Rendering.Universal
             softShadowQualityProp = serializedObject.FindProperty("m_SoftShadowQuality");
             shadowUpdateModeProp = serializedObject.FindProperty("m_ShadowUpdateMode");
             cascadeUpdateModeProp = serializedObject.FindProperty("m_CascadeUpdateMode");
+            shadowScrollingSupportedProp = serializedObject.FindProperty("m_ShadowScrollingSupported");
             conservativeEnclosingSphereProp = serializedObject.FindProperty("m_ConservativeEnclosingSphere");
 
             srpBatcher = serializedObject.FindProperty("m_UseSRPBatcher");

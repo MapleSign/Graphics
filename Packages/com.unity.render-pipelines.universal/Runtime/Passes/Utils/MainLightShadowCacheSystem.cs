@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering.RenderGraphModule;
 namespace UnityEngine.Rendering.Universal.Internal
@@ -71,6 +72,28 @@ namespace UnityEngine.Rendering.Universal.Internal
         ShadowTracker m_ShadowTracker;
         bool m_IsDirty = true;
 
+        class CascadeUpdateData
+        {
+            public CascadeUpdateMode mode;
+            public int rollingStart;
+            public List<int> skipFrames = new List<int>();
+
+            public CascadeUpdateData() { }
+
+            public CascadeUpdateData(CascadeUpdateData other)
+            {
+                mode = other.mode;
+                rollingStart = other.rollingStart;
+                skipFrames = new List<int>(other.skipFrames);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return base.Equals(obj) || skipFrames.SequenceEqual( ((CascadeUpdateData)obj).skipFrames );
+            }
+        }
+        CascadeUpdateData cascadeUpdateData;
+
         public MainLightShadowCacheSystem(RenderPassEvent evt, Material copyDepthMaterial)
         {
             m_MainLightShadowMatrices = new Matrix4x4[k_MaxCascades + 1];
@@ -87,6 +110,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             m_CopyDepthPass = new(evt, copyDepthMaterial, shouldClear: true, useDestView: true);
 
             m_ShadowTracker = new ShadowTracker();
+            cascadeUpdateData = new CascadeUpdateData();
         }
 
         public void Dispose()
@@ -151,7 +175,7 @@ namespace UnityEngine.Rendering.Universal.Internal
 
             m_StaticPassSuccess = m_StaticPass.Setup(ref renderingData);
             m_DynamicPassSuccess = m_DynamicPass.Setup(ref renderingData);
-            m_CopyDepthPass.Setup(m_StaticPass.m_StaticMainLightShadowmapTexture, m_DynamicPass.m_MainLightShadowmapTexture);
+            m_CopyDepthPass.Setup(m_StaticPass.nowTexture, m_DynamicPass.m_MainLightShadowmapTexture);
 
             return m_StaticPassSuccess || m_DynamicPassSuccess;
         }
@@ -167,38 +191,85 @@ namespace UnityEngine.Rendering.Universal.Internal
             }
             else
             {
-                m_IsDirty = m_ShadowTracker.CameraChanged(ref renderingData.cameraData);
-                for (int i = 0; i < m_ShadowCasterCascadesCount; i++)
+                CascadeUpdateData newCascadeUpdateData = new CascadeUpdateData() {
+                    mode = renderingData.shadowData.cascadeUpdateMode,
+                    rollingStart = renderingData.shadowData.cascadeRollingStart,
+                    skipFrames = renderingData.shadowData.cascadeSkipFrames
+                };
+
+                if (!newCascadeUpdateData.Equals(cascadeUpdateData))
                 {
-                    // shouldUpdate means it has just updated last frame, so we reset it to not dirty.
-                    if (m_CascadeStates[i].shouldStaticUpdate)
-                        m_CascadeStates[i].isDirty = false;
+                    cascadeUpdateData = new CascadeUpdateData(newCascadeUpdateData);
+                    InitializeCascadeStates(ref renderingData);
+                }
+                else
+                {
+                    UpdateCascadeStates(ref renderingData);
+                }
+            }
+        }
 
-                    m_CascadeStates[i].isDirty |= m_IsDirty;
+        public void InitializeCascadeStates(ref RenderingData renderingData)
+        {
+            for (int i = 0; i < m_ShadowCasterCascadesCount; i++)
+            {
+                m_CascadeStates[i].Clear();
 
-                    int elapsed = cascadeStates[i].elapsed;
-                    m_CascadeStates[i].filter = ShadowObjectsFilter.AllObjects;
-                    m_CascadeStates[i].elapsed = 0;
+                switch (renderingData.shadowData.cascadeUpdateMode)
+                {
+                    case CascadeUpdateMode.Immediate:
+                        break;
+                    case CascadeUpdateMode.Rolling:
+                        if (i >= renderingData.shadowData.cascadeRollingStart)
+                        {
+                            m_CascadeStates[i].filter = ShadowObjectsFilter.StaticOnly;
+                            m_CascadeStates[i].elapsed = i - renderingData.shadowData.cascadeRollingStart;
+                        }
+                        break;
+                    case CascadeUpdateMode.Skip:
+                        if (renderingData.shadowData.cascadeSkipFrames[i] > 0)
+                        {
+                            m_CascadeStates[i].filter = ShadowObjectsFilter.StaticOnly;
+                            m_CascadeStates[i].elapsed = renderingData.shadowData.cascadeSkipFrames[i];
+                        }
+                        break;
+                }
+            }
+        }
 
-                    switch (renderingData.shadowData.cascadeUpdateMode)
-                    {
-                        case CascadeUpdateMode.Immediate:
-                            break;
-                        case CascadeUpdateMode.Rolling:
-                            if (i >= renderingData.shadowData.cascadeRollingStart)
-                            {
-                                m_CascadeStates[i].filter = ShadowObjectsFilter.StaticOnly;
-                                m_CascadeStates[i].elapsed = elapsed > 0 ? elapsed - 1 : i - renderingData.shadowData.cascadeRollingStart + 1;
-                            }
-                            break;
-                        case CascadeUpdateMode.Skip:
-                            if (renderingData.shadowData.cascadeSkipFrames[i] > 0)
-                            {
-                                m_CascadeStates[i].filter = ShadowObjectsFilter.StaticOnly;
-                                m_CascadeStates[i].elapsed = elapsed > 0 ? elapsed - 1 : renderingData.shadowData.cascadeSkipFrames[i];
-                            }
-                            break;
-                    }
+        public void UpdateCascadeStates(ref RenderingData renderingData)
+        {
+            m_IsDirty = m_ShadowTracker.CameraChanged(ref renderingData.cameraData);
+            for (int i = 0; i < m_ShadowCasterCascadesCount; i++)
+            {
+                // shouldUpdate means it has just updated last frame, so we reset it to not dirty.
+                if (m_CascadeStates[i].shouldStaticUpdate)
+                    m_CascadeStates[i].isDirty = false;
+
+                m_CascadeStates[i].isDirty |= m_IsDirty;
+
+                int elapsed = cascadeStates[i].elapsed;
+                m_CascadeStates[i].filter = ShadowObjectsFilter.AllObjects;
+                m_CascadeStates[i].elapsed = 0;
+
+                switch (renderingData.shadowData.cascadeUpdateMode)
+                {
+                    case CascadeUpdateMode.Immediate:
+                        break;
+                    case CascadeUpdateMode.Rolling:
+                        if (i >= renderingData.shadowData.cascadeRollingStart)
+                        {
+                            m_CascadeStates[i].filter = ShadowObjectsFilter.StaticOnly;
+                            m_CascadeStates[i].elapsed = elapsed > 0 ? elapsed - 1 : m_ShadowCasterCascadesCount - renderingData.shadowData.cascadeRollingStart - 1;
+                        }
+                        break;
+                    case CascadeUpdateMode.Skip:
+                        if (renderingData.shadowData.cascadeSkipFrames[i] > 0)
+                        {
+                            m_CascadeStates[i].filter = ShadowObjectsFilter.StaticOnly;
+                            m_CascadeStates[i].elapsed = elapsed > 0 ? elapsed - 1 : renderingData.shadowData.cascadeSkipFrames[i];
+                        }
+                        break;
                 }
             }
         }

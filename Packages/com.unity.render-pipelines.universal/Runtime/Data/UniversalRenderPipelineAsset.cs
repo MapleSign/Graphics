@@ -548,6 +548,7 @@ namespace UnityEngine.Rendering.Universal
 
         [SerializeField] ShadowUpdateMode m_ShadowUpdateMode = ShadowUpdateMode.Mixed;
         [SerializeField] CascadeUpdateMode m_CascadeUpdateMode = CascadeUpdateMode.Rolling;
+        [SerializeField] bool m_ShadowScrollingSupported = true;
 
         // Light Cookie Settings
         [SerializeField] LightCookieResolution m_AdditionalLightsCookieResolution = LightCookieResolution._2048;
@@ -1415,6 +1416,12 @@ namespace UnityEngine.Rendering.Universal
         {
             get { return m_CascadeUpdateMode; }
             set { m_CascadeUpdateMode = value; }
+        }
+
+        public bool supportsShadowScrolling
+        {
+            get { return m_ShadowScrollingSupported; }
+            set { m_ShadowScrollingSupported = value; }
         }
 
         /// <summary>

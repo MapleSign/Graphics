@@ -10,6 +10,8 @@ namespace UnityEngine.Rendering.Universal.Internal
     public class StaticMainLightShadowCasterPass : ScriptableRenderPass
     {
         static Material clearDepthMaterial;
+        static Material scrollDepthMaterial;
+        static Material copyDepthMaterial;
 
         MainLightShadowCacheSystem m_ShadowCacheSystem;
 
@@ -18,8 +20,19 @@ namespace UnityEngine.Rendering.Universal.Internal
         private const string k_EmptyMainLightShadowMapTextureName = "_EmptyMainLightShadowmapTexture";
         
         int m_StaticMainLightShadowmapID;
-        internal RTHandle m_StaticMainLightShadowmapTexture;
+        int m_ShadowMapIndex = 0;
+        internal RTHandle[] m_StaticMainLightShadowmapTextures;
         private const string k_StaticeMainLightShadowMapTextureName = "_StaticMainLightShadowmapTexture";
+        const int k_ShadowMapCount = 2;
+
+        internal RTHandle lastTexture => m_StaticMainLightShadowmapTextures[(m_ShadowMapIndex + 1) % k_ShadowMapCount];
+        internal RTHandle nowTexture => m_StaticMainLightShadowmapTextures[m_ShadowMapIndex];
+        void NextShadowMap() => m_ShadowMapIndex = (m_ShadowMapIndex + 1) % k_ShadowMapCount;
+
+        bool[] isLastFrameAvailables;
+        Matrix4x4[] lastShadowViewMatrices;
+        Matrix4x4[] lastShadowProjMatrices;
+        int scrollDepthMapId;
 
         bool m_CreateEmptyShadowmap;
 
@@ -37,11 +50,31 @@ namespace UnityEngine.Rendering.Universal.Internal
 
             if (clearDepthMaterial == null)
             {
-                clearDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/Clear Depth"));
+                clearDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/ClearDepth"));
+            }
+
+            if (scrollDepthMaterial == null)
+            {
+                scrollDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/ScrollDepth"));
+            }
+
+            if (copyDepthMaterial == null)
+            {
+                copyDepthMaterial = new Material(Shader.Find("Hidden/Universal Render Pipeline/CopyDepth"));
             }
 
             m_StaticMainLightShadowmapID = Shader.PropertyToID(k_StaticeMainLightShadowMapTextureName);
+            m_StaticMainLightShadowmapTextures = new RTHandle[k_ShadowMapCount];
             m_ShadowCacheSystem = cacheSystem;
+
+            scrollDepthMapId = Shader.PropertyToID("_DepthMap");
+            isLastFrameAvailables = new bool[cacheSystem.k_MaxCascades];
+            for (int i = 0; i < isLastFrameAvailables.Length; i++)
+            {
+                isLastFrameAvailables[i] = false;
+            }
+            lastShadowViewMatrices = new Matrix4x4[cacheSystem.k_MaxCascades];
+            lastShadowProjMatrices = new Matrix4x4[cacheSystem.k_MaxCascades];
         }
 
         /// <summary>
@@ -49,8 +82,19 @@ namespace UnityEngine.Rendering.Universal.Internal
         /// </summary>
         public void Dispose()
         {
-            m_StaticMainLightShadowmapTexture?.Release();
+            for (int i = 0; i < m_StaticMainLightShadowmapTextures.Length; i++)
+            {
+                m_StaticMainLightShadowmapTextures[i]?.Release();
+            }
             m_EmptyMainLightShadowmapTexture?.Release();
+        }
+
+        public void Reset()
+        {
+            for (int i = 0; i < isLastFrameAvailables.Length; i++)
+            {
+                isLastFrameAvailables[i] = false;
+            }
         }
 
         /// <summary>
@@ -76,7 +120,10 @@ namespace UnityEngine.Rendering.Universal.Internal
             }
 
             useNativeRenderPass = true;
-            ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_StaticMainLightShadowmapTexture, m_ShadowCacheSystem.renderTargetWidth, m_ShadowCacheSystem.renderTargetHeight, m_ShadowCacheSystem.k_ShadowmapBufferBits, name: k_StaticeMainLightShadowMapTextureName);
+            for (int i = 0; i < k_ShadowMapCount; i++)
+                ShadowUtils.ShadowRTReAllocateIfNeeded(ref m_StaticMainLightShadowmapTextures[i],
+                    m_ShadowCacheSystem.renderTargetWidth, m_ShadowCacheSystem.renderTargetHeight, m_ShadowCacheSystem.k_ShadowmapBufferBits,
+                    name: k_StaticeMainLightShadowMapTextureName + i);
 
             return true;
         }
@@ -99,7 +146,7 @@ namespace UnityEngine.Rendering.Universal.Internal
             if (m_CreateEmptyShadowmap)
                 ConfigureTarget(m_EmptyMainLightShadowmapTexture);
             else
-                ConfigureTarget(m_StaticMainLightShadowmapTexture);
+                ConfigureTarget(nowTexture);
 
             ConfigureClear(ClearFlag.None, Color.black);
         }
@@ -115,7 +162,8 @@ namespace UnityEngine.Rendering.Universal.Internal
             }
 
             RenderMainLightCascadeShadowmap(ref context, ref renderingData);
-            renderingData.commandBuffer.SetGlobalTexture(m_StaticMainLightShadowmapID, m_StaticMainLightShadowmapTexture.nameID);
+            renderingData.commandBuffer.SetGlobalTexture(m_StaticMainLightShadowmapID, nowTexture.nameID);
+            NextShadowMap();
         }
 
         void RenderMainLightCascadeShadowmap(ref ScriptableRenderContext context, ref RenderingData renderingData)
@@ -139,26 +187,100 @@ namespace UnityEngine.Rendering.Universal.Internal
 
                 for (int cascadeIndex = 0; cascadeIndex < m_ShadowCacheSystem.cascadesCount; ++cascadeIndex)
                 {
+                    var offsetX = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetX;
+                    var offsetY = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetY;
+                    var resolution = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution;
                     if (!m_ShadowCacheSystem.cascadeStates[cascadeIndex].shouldStaticUpdate)
-                        continue;
+                    {
+                        cmd.SetGlobalTexture("_CameraDepthAttachment", lastTexture.nameID);
+                        cmd.EnableShaderKeyword("_OUTPUT_DEPTH");
+                        cmd.SetViewport(new Rect(offsetX, offsetY, resolution, resolution));
+                        var scaleBias = new Vector4(
+                            (float)(resolution) / renderingData.shadowData.mainLightShadowmapWidth,
+                            (float)(resolution) / renderingData.shadowData.mainLightShadowmapHeight,
+                            (float)offsetX / renderingData.shadowData.mainLightShadowmapWidth,
+                            (float)offsetY / renderingData.shadowData.mainLightShadowmapHeight
+                            );
+                        Blitter.BlitTexture(cmd, lastTexture, scaleBias, copyDepthMaterial, 0);
+                        context.ExecuteCommandBuffer(cmd);
+                        cmd.Clear();
+                    }
+                    else
+                    {
+                        cmd.SetViewport(new Rect(offsetX, offsetY, resolution, resolution));
+                        cmd.DrawProcedural(Matrix4x4.identity, clearDepthMaterial, 0, MeshTopology.Triangles, 3);
+                        context.ExecuteCommandBuffer(cmd);
+                        cmd.Clear();
 
-                    settings.splitData = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].splitData;
+                        if (isLastFrameAvailables[cascadeIndex] && renderingData.shadowData.supportsShadowScrolling)
+                        {
+                            ScrollDepth(ref context, ref renderingData, cascadeIndex);
+                        }
+                        lastShadowViewMatrices[cascadeIndex] = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewMatrix;
+                        lastShadowProjMatrices[cascadeIndex] = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix;
 
-                    cmd.SetViewport(new Rect(m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetX, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetY,
-                        m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution));
-                    cmd.SetViewProjectionMatrices(m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewMatrix);
-                    cmd.DrawProcedural(Matrix4x4.identity, clearDepthMaterial, 0, MeshTopology.Triangles, 3);
-                    context.ExecuteCommandBuffer(cmd);
-                    cmd.Clear();
+                        settings.splitData = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].splitData;
 
-                    Vector4 shadowBias = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, ref renderingData.shadowData,
-                        m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution);
-                    ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref shadowLight, shadowBias);
-                    CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
-                    ShadowUtils.RenderShadowSlice(cmd, ref context, ref m_ShadowCacheSystem.cascadeSlices[cascadeIndex],
-                        ref settings, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewMatrix);
+                        Vector4 shadowBias = ShadowUtils.GetShadowBias(ref shadowLight, shadowLightIndex, ref renderingData.shadowData,
+                            m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, resolution);
+                        ShadowUtils.SetupShadowCasterConstantBuffer(cmd, ref shadowLight, shadowBias);
+                        CoreUtils.SetKeyword(cmd, ShaderKeywordStrings.CastingPunctualLightShadow, false);
+                        ShadowUtils.RenderShadowSlice(cmd, ref context, ref m_ShadowCacheSystem.cascadeSlices[cascadeIndex],
+                            ref settings, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix, m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewMatrix);
+
+                        isLastFrameAvailables[cascadeIndex] = true;
+                    }
                 }
             }
+        }
+
+        void ScrollDepth(ref ScriptableRenderContext context, ref RenderingData renderingData, int cascadeIndex)
+        {
+            var viewMatrix = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].viewMatrix;
+            var projMatrix = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].projectionMatrix;
+            var cmd = renderingData.commandBuffer;
+
+            Vector4 uvDeform, depthDeform;
+
+            Vector4 dP = lastShadowViewMatrices[cascadeIndex] * viewMatrix.inverse * new Vector4(0f, 0f, 0f, 1f);
+            var fp0 = lastShadowProjMatrices[cascadeIndex].decomposeProjection;
+            var fp1 = projMatrix.decomposeProjection;
+
+            // from new view to old view
+            var dUV = new Vector4(
+                (fp1.right - fp1.left) / (fp0.right - fp0.left),
+                (fp1.top - fp1.bottom) / (fp0.top - fp0.bottom),
+                dP.x / (fp0.right - fp0.left),
+                dP.y / (fp0.top - fp0.bottom)
+                );
+            // from screen to uv
+            dUV.z = dUV.z + 0.5f - dUV.x * 0.5f;
+            dUV.w = dUV.w + 0.5f - dUV.y * 0.5f;
+            uvDeform = dUV;
+
+            // from old view to new view
+            var dDepth = new Vector4(
+                (fp0.zFar - fp0.zNear) / (fp1.zFar - fp1.zNear),
+                (fp0.zNear - fp1.zNear + dP.z) / (fp1.zFar - fp1.zNear)
+                );
+            depthDeform = dDepth;
+
+            var offsetX = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetX;
+            var offsetY = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].offsetY;
+            var resolution = m_ShadowCacheSystem.cascadeSlices[cascadeIndex].resolution;
+            var bound = new Vector4(
+                    (float)offsetX / renderingData.shadowData.mainLightShadowmapWidth,
+                    (float)offsetY / renderingData.shadowData.mainLightShadowmapHeight,
+                    (float)(offsetX + resolution) / renderingData.shadowData.mainLightShadowmapWidth,
+                    (float)(offsetY + resolution)/ renderingData.shadowData.mainLightShadowmapHeight
+                );
+
+            cmd.SetGlobalVector("_Bound", bound);
+            cmd.SetGlobalVector("_UVDeform", uvDeform);
+            cmd.SetGlobalVector("_DepthDeform", depthDeform);
+            cmd.SetGlobalTexture(scrollDepthMapId, lastTexture);
+            Blitter.BlitTexture(cmd, lastTexture, new Vector4(1f, 1f, 0f, 0f), scrollDepthMaterial, 0);
+            context.ExecuteCommandBuffer(cmd);
         }
 
         private class PassData
@@ -183,7 +305,7 @@ namespace UnityEngine.Rendering.Universal.Internal
 
                 if (!m_CreateEmptyShadowmap)
                 {
-                    passData.shadowmapTexture = UniversalRenderer.CreateRenderGraphTexture(graph, m_StaticMainLightShadowmapTexture.rt.descriptor, "Static Main Shadowmap", true, ShadowUtils.m_ForceShadowPointSampling ? FilterMode.Point : FilterMode.Bilinear);
+                    passData.shadowmapTexture = UniversalRenderer.CreateRenderGraphTexture(graph, nowTexture.rt.descriptor, "Static Main Shadowmap", true, ShadowUtils.m_ForceShadowPointSampling ? FilterMode.Point : FilterMode.Bilinear);
                     builder.UseDepthBuffer(passData.shadowmapTexture, DepthAccess.Write);
                 }
 
