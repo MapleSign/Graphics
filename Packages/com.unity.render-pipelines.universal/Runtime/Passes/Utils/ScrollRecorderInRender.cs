@@ -26,6 +26,9 @@ public class ScrollRecorderInRender
     int count = 0;
 
     FrustumPlanes[] frustumPlanes;
+    Bounds[] frustumBounds;
+    float[] radiusScales;
+
     int[] newLayerValues;
 
     Visibility[,] lastVisibilities;
@@ -47,6 +50,9 @@ public class ScrollRecorderInRender
         lastVisibilities = new Visibility[k_MaxStatics, k_MaxCascades];
 
         frustumPlanes = new FrustumPlanes[k_MaxCascades];
+        frustumBounds = new Bounds[k_MaxCascades];
+        radiusScales = new float[k_MaxCascades];
+
         newLayerValues = new int[k_MaxStatics];
     }
 
@@ -103,13 +109,24 @@ public class ScrollRecorderInRender
         for (int cascadeIndex = 0; cascadeIndex < cacheSystem.cascadesCount; cascadeIndex++)
         {
             frustumPlanes[cascadeIndex] = cacheSystem.cascadeSlices[cascadeIndex].projectionMatrix.decomposeProjection;
+
+            var fpCenter = new Vector3(0f, 0f, (frustumPlanes[cascadeIndex].zFar + frustumPlanes[cascadeIndex].zNear) * 0.5f);
+            var fpSize = new Vector3(
+                frustumPlanes[cascadeIndex].right - frustumPlanes[cascadeIndex].left,
+                frustumPlanes[cascadeIndex].top - frustumPlanes[cascadeIndex].bottom,
+                frustumPlanes[cascadeIndex].zFar - frustumPlanes[cascadeIndex].zNear
+                );
+            frustumBounds[cascadeIndex] = new Bounds(fpCenter, fpSize);
+
+            radiusScales[cascadeIndex] = Mathf.Log10(fpSize.z) * 2f;
         }
+
         var parallelOptions = new ParallelOptions() { MaxDegreeOfParallelism = -1 };
         Parallel.For(0, count, parallelOptions, i =>
         {
             for (int cascadeIndex = 0; cascadeIndex < cacheSystem.cascadesCount; cascadeIndex++)
             {
-                var visibility = IntersectWithCullingSphere(cascadeIndex, i);
+                var visibility = IntersectWithShadowVolume(cascadeIndex, i);
                 if (lastVisibilities[i, cascadeIndex] != Visibility.Complete && visibility != Visibility.Invisible)
                 {
                     newLayerValues[i] = k_DefaultLayer;
@@ -128,8 +145,8 @@ public class ScrollRecorderInRender
         float cullingSphereRadius = cacheSystem.cascadeSplitDistances[cascadeIndex].w;
         float distance = Vector3.Distance(pos, cullingSphereCenter);
 
-        Visibility visibility = distance < (cullingSphereRadius - radius) * 0.8f ? Visibility.Complete :
-            distance >= (cullingSphereRadius + radius) * 1.8f ? Visibility.Invisible : Visibility.Partial;
+        Visibility visibility = distance < Mathf.Abs(cullingSphereRadius - radius) ? Visibility.Complete :
+            distance > (cullingSphereRadius + radius) ? Visibility.Invisible : Visibility.Partial;
 
         return visibility;
     }
@@ -137,17 +154,9 @@ public class ScrollRecorderInRender
     Visibility IntersectWithShadowVolume(int cascadeIndex, int i)
     {
         var pos = cacheSystem.cascadeSlices[cascadeIndex].viewMatrix.MultiplyPoint(boundingSpheres[i].position);
-        pos = cacheSystem.cascadeSlices[cascadeIndex].projectionMatrix.MultiplyPoint(pos);
+        pos.z *= -1f;
 
-        var fpCenter = new Vector3(-1f, -1f, -1f);
-        var fpSize = new Vector3(2f, 2f, 2f);
-        Rect frustumRect = new Rect(fpCenter, fpSize);
-        var visibility = IntersectRectSphere(frustumRect, new Vector3(pos.x, pos.y, boundingSpheres[i].radius / (frustumPlanes[cascadeIndex].right)));
-
-        var depthRadius = boundingSpheres[i].radius / (frustumPlanes[cascadeIndex].zFar - frustumPlanes[cascadeIndex].zNear) * 2f;
-        var depthVisibility = IntersectLine(-1f, 1f, pos.z - depthRadius, pos.z + depthRadius);
-
-        visibility = visibility < depthVisibility ? visibility : depthVisibility;
+        var visibility = IntersectBoundsSphere(frustumBounds[cascadeIndex], new BoundingSphere(pos, boundingSpheres[i].radius * radiusScales[cascadeIndex]));
 
         return visibility;
     }
