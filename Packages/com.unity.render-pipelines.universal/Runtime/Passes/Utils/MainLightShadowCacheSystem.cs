@@ -92,6 +92,11 @@ namespace UnityEngine.Rendering.Universal.Internal
             {
                 return base.Equals(obj) || skipFrames.SequenceEqual( ((CascadeUpdateData)obj).skipFrames );
             }
+
+            public override int GetHashCode()
+            {
+                return base.GetHashCode();
+            }
         }
         CascadeUpdateData cascadeUpdateData;
 

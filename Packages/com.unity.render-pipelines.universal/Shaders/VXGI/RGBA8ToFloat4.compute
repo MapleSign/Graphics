@@ -1,0 +1,20 @@
+#pragma kernel main
+
+RWTexture3D<uint> from;
+RWTexture3D<float4> to;
+
+float4 convRGBA8ToFloat4(uint val)
+{
+    return float4(float((val & 0x000000FF)), 
+    float((val & 0x0000FF00) >> 8), 
+    float((val & 0x00FF0000) >> 16), 
+    float((val & 0xFF000000) >> 24));
+}
+
+[numthreads(8, 8, 8)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    float4 val = convRGBA8ToFloat4(from[tid.xyz]);
+    val.xyz /= 255.0;
+    to[tid.xyz] = val;
+}

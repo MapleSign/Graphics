@@ -1,0 +1,17 @@
+#pragma kernel ClearTexture3D
+
+#pragma multi_compile _ TYPE_FLOAT4
+
+#ifdef TYPE_FLOAT4
+float4 color = float4(0, 0, 0, 0);
+RWTexture3D<float4> _MainTex;
+#else
+uint color = 0;
+RWTexture3D<uint> _MainTex;
+#endif
+
+[numthreads(8, 8, 8)]
+void ClearTexture3D(uint3 tid : SV_DispatchThreadID)
+{
+    _MainTex[tid.xyz] = color;
+}

@@ -71,7 +71,12 @@ public class ScrollRecorderInRender
     {
         if (holders == null)
         {
-            holders = GameObject.Find("TREES_GENERATED");
+            holders = GameObject.Find("STATIC_HOLDERS");
+            if (holders == null)
+            {
+                return;
+            }
+
             count = Mathf.Min(k_MaxStatics, holders.transform.childCount);
 
             for (int i = 0; i < count; i++)
