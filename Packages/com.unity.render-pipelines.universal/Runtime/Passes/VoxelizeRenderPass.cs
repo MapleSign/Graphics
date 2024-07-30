@@ -10,7 +10,6 @@ class VoxelizeRenderPass : ScriptableRenderPass
     private List<ShaderTagId> m_ShaderTagIdList;
 
     private VXGIRenderFeature m_Feature;
-    private Camera m_VoxelizeCamera;
 
     private Matrix4x4[] m_ViewProjMatrices;
     private Matrix4x4[] m_ViewProjInvMatrices;
@@ -49,19 +48,6 @@ class VoxelizeRenderPass : ScriptableRenderPass
     // The render pipeline will ensure target setup and clearing happens in a performant manner.
     public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
     {
-        if (m_VoxelizeCamera == null)
-        {
-            foreach (var camera in Camera.allCameras)
-            {
-                if (camera.CompareTag("Voxelize"))
-                {
-                    m_VoxelizeCamera = camera;
-                    camera.enabled = false;
-                    break;
-                }
-            }
-        }
-
         if (m_VoxelAlbedo == null)
         {
             m_VoxelAlbedo = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R32_UInt);
@@ -89,7 +75,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
         if (m_EmptyRenderTarget == null)
         {
             m_EmptyRenderTarget = RTHandles.Alloc(
-                m_Feature.m_Resolution, m_Feature.m_Resolution, colorFormat: GraphicsFormat.R8_UInt);
+                m_Feature.m_Resolution, m_Feature.m_Resolution, colorFormat: GraphicsFormat.R32_SFloat);
         }
 
         ConfigureTarget(m_EmptyRenderTarget);
@@ -103,7 +89,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
     public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
     {
         var cullResults = renderingData.cullResults;
-        if (m_VoxelizeCamera != null && m_VoxelizeCamera.TryGetCullingParameters(out var cullingParameters))
+        if (m_Feature.VoxelizeCamera != null && m_Feature.VoxelizeCamera.TryGetCullingParameters(out var cullingParameters))
         {
             cullResults = context.Cull(ref cullingParameters);
         }
@@ -206,10 +192,20 @@ class VoxelizeRenderPass : ScriptableRenderPass
         int threadGroupsZ = resolution / (int)z;
 
         cmd.DisableKeyword(clearShader, typeKeyword);
-        cmd.SetComputeTextureParam(clearShader, kernalId, nameId, m_VoxelAlbedo);
         context.ExecuteCommandBuffer(cmd);
         cmd.Clear();
 
+        cmd.SetComputeTextureParam(clearShader, kernalId, nameId, m_VoxelAlbedo);
+        cmd.DispatchCompute(clearShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
+        context.ExecuteCommandBuffer(cmd);
+        cmd.Clear();
+
+        cmd.SetComputeTextureParam(clearShader, kernalId, nameId, m_VoxelNormal);
+        cmd.DispatchCompute(clearShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
+        context.ExecuteCommandBuffer(cmd);
+        cmd.Clear();
+
+        cmd.SetComputeTextureParam(clearShader, kernalId, nameId, m_VoxelEmission);
         cmd.DispatchCompute(clearShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
         context.ExecuteCommandBuffer(cmd);
         cmd.Clear();

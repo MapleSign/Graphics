@@ -93,7 +93,7 @@ Shader "Universal Render Pipeline/VXGI"
                 half4 tangentWS : TEXCOORD2;
 
                 float4 positionVS : TEXCOORD3;// Volume space position
-                float4 aabb : TEXCOORD4;
+                nointerpolation float4 aabb : TEXCOORD4;
 
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
@@ -204,7 +204,7 @@ Shader "Universal Render Pipeline/VXGI"
                 };
                 float2 halfPixel = float2(1.0 / _VolumeResolution, 1.0 / _VolumeResolution);
 
-                float4 aabb = CalcAABB(pos, halfPixel * 10.0);
+                float4 aabb = CalcAABB(pos, halfPixel);
 
                 GSOutput output = (GSOutput)0;
                 output.aabb = aabb;
@@ -226,13 +226,15 @@ Shader "Universal Render Pipeline/VXGI"
                 }
             }
 
-            uint frag(GSOutput input) : SV_Target
+            float frag(GSOutput input) : SV_Target
             {
-                // if (input.positionCS.x < input.aabb.x || input.positionCS.y < input.aabb.y || 
-                //     input.positionCS.x > input.aabb.z || input.positionCS.y > input.aabb.w)
-                // {
-                //     discard;
-                // }
+                float2 positionCS = input.positionCS.xy / _VolumeResolution * 2.0 - 1.0;
+                positionCS.y *= -1.0;
+                if (positionCS.x < input.aabb.x || positionCS.y < input.aabb.y || 
+                    positionCS.x > input.aabb.z || positionCS.y > input.aabb.w)
+                {
+                    discard;
+                }
 
                 half4 albedoAlpha = SampleAlbedoAlpha(input.uv, TEXTURE2D_ARGS(_BaseMap, sampler_BaseMap));
                 float alpha = Alpha(albedoAlpha.a, _BaseColor, _Cutoff);

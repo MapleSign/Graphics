@@ -2,7 +2,6 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
-using UnityEngine.Experimental.Rendering;
 
 public class VXGIRenderFeature : ScriptableRendererFeature
 {
@@ -25,11 +24,19 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     [Reload("Shaders/VXGI/RGBA8ToFloat4.compute")]
     private ComputeShader m_VisualizeShader;
 
+
+    [SerializeField]
+    [HideInInspector]
+    [Reload("Prefabs/VoxelizeCamera.prefab")]
+    private GameObject m_VoxelizeCameraPrefab;
+    private Camera m_VoxelizeCamera;
+
     private VoxelizeRenderPass m_ScriptablePass;
 
     public Shader VXGIShader => m_VXGIShader;
     public ComputeShader ClearTexture3DShader => m_ClearTexture3DShader;
     public ComputeShader VisulizeShader => m_VisualizeShader;
+    public Camera VoxelizeCamera => m_VoxelizeCamera;
 
     /// <inheritdoc/>
     public override void Create()
@@ -37,6 +44,7 @@ public class VXGIRenderFeature : ScriptableRendererFeature
 #if UNITY_EDITOR
         ResourceReloader.TryReloadAllNullIn(this, UniversalRenderPipelineAsset.packagePath);
 #endif
+        m_VoxelizeCamera = m_VoxelizeCameraPrefab.GetComponent<Camera>();
 
         m_ScriptablePass = new VoxelizeRenderPass(this);
 
@@ -49,6 +57,14 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
         renderer.EnqueuePass(m_ScriptablePass);
+    }
+
+    public override void SetupRenderPasses(ScriptableRenderer renderer, in RenderingData renderingData)
+    {
+        m_VoxelizeCamera.transform.position = m_VXGIVolume.center;
+        m_VoxelizeCamera.orthographicSize = Mathf.Max(m_VXGIVolume.extents.x, m_VXGIVolume.extents.y);
+        m_VoxelizeCamera.nearClipPlane = -m_VXGIVolume.extents.z;
+        m_VoxelizeCamera.farClipPlane = m_VXGIVolume.extents.z;
     }
 }
 
