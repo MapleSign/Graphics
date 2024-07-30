@@ -65,19 +65,19 @@ class VoxelizeRenderPass : ScriptableRenderPass
     {
         if (m_VoxelAlbedo == null)
         {
-            m_VoxelAlbedo = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R32_UInt);
+            m_VoxelAlbedo = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm);
             Debug.Assert(m_VoxelAlbedo.Create());
         }
 
         if (m_VoxelNormal == null)
         {
-            m_VoxelNormal = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R32_UInt);
+            m_VoxelNormal = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm);
             Debug.Assert(m_VoxelNormal.Create());
         }
 
         if (m_VoxelEmission == null)
         {
-            m_VoxelEmission = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R32_UInt);
+            m_VoxelEmission = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm);
             Debug.Assert(m_VoxelEmission.Create());
         }
 
@@ -182,19 +182,21 @@ class VoxelizeRenderPass : ScriptableRenderPass
 
             ComputeRadiance(ref context, ref renderingData);
 
-            if (m_Feature.VisulizeShader != null && m_Feature.m_VisualizeTexture != null)
+            if (m_Feature.m_VisualizeTexture != null)
             {
-                int kernalId = m_Feature.VisulizeShader.FindKernel("main");
-                cmd.SetComputeTextureParam(m_Feature.VisulizeShader, kernalId, "from", m_VoxelRadiance);
-                cmd.SetComputeTextureParam(m_Feature.VisulizeShader, kernalId, "to", m_Feature.m_VisualizeTexture);
+                var textureToVisualize = m_VoxelRadiance;
+                var visulizeShader = m_Feature.m_CopyTexture3DShader;
+                int kernalId = visulizeShader.FindKernel("main");
+                cmd.SetComputeTextureParam(visulizeShader, kernalId, "from", m_VoxelRadiance);
+                cmd.SetComputeTextureParam(visulizeShader, kernalId, "to", m_Feature.m_VisualizeTexture);
                 context.ExecuteCommandBuffer(cmd);
                 cmd.Clear();
 
-                m_Feature.VisulizeShader.GetKernelThreadGroupSizes(kernalId, out var x, out var y, out var z);
+                visulizeShader.GetKernelThreadGroupSizes(kernalId, out var x, out var y, out var z);
                 int threadGroupsX = resolution / (int)x;
                 int threadGroupsY = resolution / (int)y;
                 int threadGroupsZ = resolution / (int)z;
-                cmd.DispatchCompute(m_Feature.VisulizeShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
+                cmd.DispatchCompute(visulizeShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
                 context.ExecuteCommandBuffer(cmd);
                 cmd.Clear();
             }
@@ -233,7 +235,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
         context.ExecuteCommandBuffer(cmd);
         cmd.Clear();
 
-        if (m_Feature.VisulizeShader != null && m_Feature.m_VisualizeTexture != null)
+        if (m_Feature.m_VisualizeTexture != null)
         {
             cmd.EnableKeyword(clearShader, typeKeyword);
             cmd.SetComputeTextureParam(clearShader, kernalId, nameId, m_Feature.m_VisualizeTexture);
@@ -264,6 +266,8 @@ class VoxelizeRenderPass : ScriptableRenderPass
         cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelNormal", m_VoxelNormal);
         cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelEmission", m_VoxelEmission);
         cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelRadiance", m_VoxelRadiance);
+        context.ExecuteCommandBuffer(cmd);
+        cmd.Clear();
 
         for (int i = 0; i < renderingData.lightData.visibleLights.Length; ++i)
         {
@@ -286,6 +290,8 @@ class VoxelizeRenderPass : ScriptableRenderPass
             cmd.SetComputeVectorParam(diShader, ShaderConstants._LightAttenuation, lightAttenuation);
             cmd.SetComputeVectorParam(diShader, ShaderConstants._LightOcclusionProbInfo, lightOcclusionProbeChannel);
             cmd.SetComputeVectorParam(diShader, ShaderConstants._LightDirection, lightSpotDir);
+            context.ExecuteCommandBuffer(cmd);
+            cmd.Clear();
 
             cmd.DispatchCompute(diShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
             context.ExecuteCommandBuffer(cmd);

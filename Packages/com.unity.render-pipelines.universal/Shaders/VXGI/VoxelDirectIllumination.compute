@@ -1,12 +1,12 @@
 #pragma kernel main
 
+#pragma enable_d3d11_debug_symbols
+#pragma multi_compile _ _DIRECTIONAL
+
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/Shaders/Utils/Deferred.hlsl"
 
-#pragma multi_compile _ _DIRECTIONAL
-
-Texture3D _VoxelAlbedo;
-SamplerState PointClampSampler;
+Texture3D<unorm float4> _VoxelAlbedo;
 
 RWTexture3D<unorm float4> _VoxelNormal;
 RWTexture3D<unorm float4> _VoxelEmission;
@@ -30,6 +30,10 @@ int _CookieLightIndex;
 void main(uint3 tid : SV_DispatchThreadID)
 {
     float4 albedo = _VoxelAlbedo[tid];
+    if (albedo.a == 0.0)
+    {
+        return;
+    }
     float4 normal = _VoxelNormal[tid];
     normal.xyz = normal.xyz * 2.0 - 1.0;
     float4 emission = _VoxelEmission[tid];
@@ -62,5 +66,6 @@ void main(uint3 tid : SV_DispatchThreadID)
     #endif
 
     float3 lightColor = light.color * light.distanceAttenuation * light.shadowAttenuation;
-    _VoxelRadiance[tid] = half4(albedo.rgb * INV_PI * max(dot(normal.xyz, light.direction.xyz), 0.0), 1.0);
+    float3 brdf = albedo.rgb * INV_PI * max(dot(normal.xyz, light.direction.xyz), 0.0);
+    _VoxelRadiance[tid] = half4(lightColor * brdf, 1.0);
 }

@@ -1,0 +1,10 @@
+#pragma kernel main
+
+RWTexture3D<float4> from;
+RWTexture3D<float4> to;
+
+[numthreads(8, 8, 8)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    to[tid.xyz] = from[tid.xyz];
+}

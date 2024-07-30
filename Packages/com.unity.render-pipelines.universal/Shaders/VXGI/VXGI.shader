@@ -207,7 +207,7 @@ Shader "Universal Render Pipeline/VXGI"
 
             void imageAtomicRGBA8Avg(RWTexture3D<uint> grid, int3 coord, float4 value)
             {
-                value.xyz *= 255.0;
+                value.xyz = clamp(value.xyz, 0.0, 1.0) * 255.0;
                 uint newVal = convFloat4ToRGBA8(value);
                 uint prevVal = 0;
                 // InterlockedExchange(grid[coord], newVal, prevVal);

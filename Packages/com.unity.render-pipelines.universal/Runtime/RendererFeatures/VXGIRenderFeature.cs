@@ -12,7 +12,7 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     [SerializeField]
     [HideInInspector]
     [Reload("Shaders/VXGI/VXGI.shader")]
-    private Shader m_VXGIShader;
+    readonly public Shader m_VXGIShader;
 
     [SerializeField]
     [HideInInspector]
@@ -22,7 +22,12 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     [SerializeField]
     [HideInInspector]
     [Reload("Shaders/VXGI/RGBA8ToFloat4.compute")]
-    private ComputeShader m_VisualizeShader;
+    readonly public ComputeShader m_RGBA8ToFloat4Shader;
+
+    [SerializeField]
+    [HideInInspector]
+    [Reload("Shaders/VXGI/CopyTexture3D.compute")]
+    readonly public ComputeShader m_CopyTexture3DShader;
 
     [SerializeField]
     [HideInInspector]
@@ -39,7 +44,6 @@ public class VXGIRenderFeature : ScriptableRendererFeature
 
     public Shader VXGIShader => m_VXGIShader;
     public ComputeShader ClearTexture3DShader => m_ClearTexture3DShader;
-    public ComputeShader VisulizeShader => m_VisualizeShader;
     public ComputeShader DirectIllumShader => m_DirectIllumShader;
 
     public Camera VoxelizeCamera => m_VoxelizeCamera;
