@@ -16,11 +16,12 @@ Shader "Universal Render Pipeline/VXGI"
     
     SubShader
     {
-        Tags { "RenderPipeline"="UniversalRenderPipeline" }
+        Tags { "RenderPipeline"="UniversalPipeline" }
 
         Pass
         {
             Name "Voxelize"
+            Tags { "LightMode" = "UniversalGBuffer" }
 
             Cull Off
             ColorMask R

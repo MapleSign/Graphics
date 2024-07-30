@@ -28,9 +28,10 @@ class VoxelizeRenderPass : ScriptableRenderPass
     {
         m_ShaderTagIdList = new List<ShaderTagId>
         {
-            new ShaderTagId("SRPDefaultUnlit"),
-            new ShaderTagId("UniversalForward"),
-            new ShaderTagId("UniversalForwardOnly")
+            //new ShaderTagId("SRPDefaultUnlit"),
+            //new ShaderTagId("UniversalForward"),
+            //new ShaderTagId("UniversalForwardOnly")
+            new ShaderTagId("UniversalGBuffer")
         };
 
         m_Feature = renderFeature;

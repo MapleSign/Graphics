@@ -34,7 +34,9 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     /// <inheritdoc/>
     public override void Create()
     {
+#if UNITY_EDITOR
         ResourceReloader.TryReloadAllNullIn(this, UniversalRenderPipelineAsset.packagePath);
+#endif
 
         m_ScriptablePass = new VoxelizeRenderPass(this);
 
