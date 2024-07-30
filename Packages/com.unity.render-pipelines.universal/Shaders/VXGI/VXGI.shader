@@ -134,6 +134,61 @@ Shader "Universal Render Pipeline/VXGI"
                 return aabb;
             }
 
+            // "GPU Gems 2 Chapter 42. Conservative Rasterization"
+            // implemention ref to https://github.com/jose-villegas/VCTRenderer
+            void DilateTriangle(inout float4 pos[3], inout float2 uv[3], float2 pixelDiag)
+            {
+                // plane is in xyw space and is represented as: ax + by + c = 0 (w == 1)
+                // and this is also a line in xy space
+
+                float4 trianglePlane;
+                trianglePlane.xyz = cross(pos[1].xyz - pos[0].xyz, pos[2].xyz - pos[0].xyz);
+                trianglePlane.xyz = normalize(trianglePlane.xyz);
+                trianglePlane.w = -dot(pos[0].xyz, trianglePlane.xyz);
+
+                // change winding, otherwise there are artifacts for the back faces.
+                if (dot(trianglePlane.xyz, float3(0.0, 0.0, 1.0)) < 0.0)
+                {
+                    float4 vertexTemp = pos[2];
+                    float2 uvTemp = uv[2];
+                    
+                    pos[2] = pos[1];
+                    uv[2] = uv[1];
+                
+                    pos[1] = vertexTemp;
+                    uv[1] = uvTemp;
+                }
+
+                // Convservative rasterization
+                // calculate the planes in homo represent lines
+                float3 planes[3];
+                planes[0] = cross(pos[0].xyw - pos[2].xyw, pos[2].xyw);
+                planes[1] = cross(pos[1].xyw - pos[0].xyw, pos[0].xyw);
+                planes[2] = cross(pos[2].xyw - pos[1].xyw, pos[1].xyw);
+                // dilate the planes by offset them in homo
+                planes[0].z -= dot(pixelDiag, abs(planes[0].xy));
+                planes[1].z -= dot(pixelDiag, abs(planes[1].xy));
+                planes[2].z -= dot(pixelDiag, abs(planes[2].xy));
+
+                // calculate intersection between the planes
+                float3 intersections[3];
+                intersections[0] = cross(planes[0], planes[1]);
+                intersections[1] = cross(planes[1], planes[2]);
+                intersections[2] = cross(planes[2], planes[0]);
+                intersections[0] /= intersections[0].z;
+                intersections[1] /= intersections[1].z;
+                intersections[2] /= intersections[2].z;
+
+                // calculate the dilated triangle
+                float dilatedZ[3];
+                dilatedZ[0] = -(dot(intersections[0].xy, trianglePlane.xy) + trianglePlane.w) / trianglePlane.z;
+                dilatedZ[1] = -(dot(intersections[1].xy, trianglePlane.xy) + trianglePlane.w) / trianglePlane.z;
+                dilatedZ[2] = -(dot(intersections[2].xy, trianglePlane.xy) + trianglePlane.w) / trianglePlane.z;
+                pos[0].xyz = float3(intersections[0].xy, dilatedZ[0]);
+                pos[1].xyz = float3(intersections[1].xy, dilatedZ[1]);
+                pos[2].xyz = float3(intersections[2].xy, dilatedZ[2]);
+            }
+
             float4 convRGBA8ToFloat4(uint val)
             {
                 return float4(float((val & 0x000000FF)), 
@@ -202,9 +257,17 @@ Shader "Universal Render Pipeline/VXGI"
                     mul(viewProj, input[1].positionWS),
                     mul(viewProj, input[2].positionWS)
                 };
-                float2 halfPixel = float2(1.0 / _VolumeResolution, 1.0 / _VolumeResolution);
 
+                float2 uv[3] = {
+                    input[0].uv,
+                    input[1].uv,
+                    input[2].uv
+                };
+
+                float2 halfPixel = float(1.0 / _VolumeResolution).xx;
                 float4 aabb = CalcAABB(pos, halfPixel);
+                
+                DilateTriangle(pos, uv, halfPixel);
 
                 GSOutput output = (GSOutput)0;
                 output.aabb = aabb;
@@ -213,11 +276,11 @@ Shader "Universal Render Pipeline/VXGI"
                 {
                     UNITY_TRANSFER_INSTANCE_ID(input[i], output);
                     output.positionCS = pos[i];
-                    output.uv = input[i].uv;
+                    output.uv = uv[i];
                     output.normalWS = input[i].normalWS;
                     output.tangentWS = input[i].tangentWS;
 
-                    output.positionVS.xyz = input[i].positionWS.xyz - _VolumeMinPoint.xyz;
+                    output.positionVS.xyz = mul(viewProjInv, pos[i]).xyz - _VolumeMinPoint.xyz;
                     output.positionVS.xyz *= _VolumeScale.xyz;
                     output.positionVS.xyz *= _VolumeResolution;
                     output.positionVS.w = 1.0;
