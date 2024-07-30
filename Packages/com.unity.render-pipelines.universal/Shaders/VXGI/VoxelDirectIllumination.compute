@@ -1,0 +1,66 @@
+#pragma kernel main
+
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+#include "Packages/com.unity.render-pipelines.universal/Shaders/Utils/Deferred.hlsl"
+
+#pragma multi_compile _ _DIRECTIONAL
+
+Texture3D _VoxelAlbedo;
+SamplerState PointClampSampler;
+
+RWTexture3D<unorm float4> _VoxelNormal;
+RWTexture3D<unorm float4> _VoxelEmission;
+RWTexture3D<half4> _VoxelRadiance;
+
+float4 _VolumeMinPoint;
+float4 _VolumeScale;
+float _VolumeResolution;
+
+float3 _LightPosWS;
+half3 _LightColor;
+half4 _LightAttenuation; // .xy are used by DistanceAttenuation - .zw are used by AngleAttenuation *for SpotLights)
+half3 _LightDirection;   // directional/spotLights support
+half4 _LightOcclusionProbInfo;
+int _LightFlags;
+int _ShadowLightIndex;
+uint _LightLayerMask;
+int _CookieLightIndex;
+
+[numthreads(8, 8, 8)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    float4 albedo = _VoxelAlbedo[tid];
+    float4 normal = _VoxelNormal[tid];
+    normal.xyz = normal.xyz * 2.0 - 1.0;
+    float4 emission = _VoxelEmission[tid];
+
+    float4 positionWS = float4(float3(tid) / _VolumeScale.xyz / _VolumeResolution + _VolumeMinPoint.xyz, 1.0);
+    Light light;
+
+    #if defined(_DIRECTIONAL)
+        light.direction = _LightDirection;
+        light.color = _LightColor.rgb;
+        light.layerMask = _LightLayerMask;
+        light.distanceAttenuation = 1.0;
+        light.shadowAttenuation = 1.0;
+    #else
+        float3 lightVector = _LightPosWS - positionWS.xyz;
+        float distanceSqr = max(dot(lightVector, lightVector), HALF_MIN);
+
+        half3 lightDirection = half3(lightVector * rsqrt(distanceSqr));
+
+        // full-float precision required on some platforms
+        float attenuation = DistanceAttenuation(distanceSqr, _LightAttenuation.xy) * AngleAttenuation(_LightDirection.xyz, lightDirection, _LightAttenuation.zw);
+
+        light.direction = lightDirection;
+        light.color = _LightColor;
+
+        light.distanceAttenuation = attenuation;
+        light.shadowAttenuation = 1.0;
+
+        light.layerMask = _LightLayerMask;
+    #endif
+
+    float3 lightColor = light.color * light.distanceAttenuation * light.shadowAttenuation;
+    _VoxelRadiance[tid] = half4(albedo.rgb * INV_PI * max(dot(normal.xyz, light.direction.xyz), 0.0), 1.0);
+}

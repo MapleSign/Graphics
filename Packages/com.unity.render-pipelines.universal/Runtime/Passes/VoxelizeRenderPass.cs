@@ -7,6 +7,19 @@ using UnityEditor;
 
 class VoxelizeRenderPass : ScriptableRenderPass
 {
+    internal static class ShaderConstants
+    {
+        public static int _LightPosWS = Shader.PropertyToID("_LightPosWS");
+        public static int _LightColor = Shader.PropertyToID("_LightColor");
+        public static int _LightAttenuation = Shader.PropertyToID("_LightAttenuation");
+        public static int _LightOcclusionProbInfo = Shader.PropertyToID("_LightOcclusionProbInfo");
+        public static int _LightDirection = Shader.PropertyToID("_LightDirection");
+        public static int _LightFlags = Shader.PropertyToID("_LightFlags");
+        public static int _ShadowLightIndex = Shader.PropertyToID("_ShadowLightIndex");
+        public static int _LightLayerMask = Shader.PropertyToID("_LightLayerMask");
+        public static int _CookieLightIndex = Shader.PropertyToID("_CookieLightIndex");
+    }
+
     private List<ShaderTagId> m_ShaderTagIdList;
 
     private VXGIRenderFeature m_Feature;
@@ -18,6 +31,8 @@ class VoxelizeRenderPass : ScriptableRenderPass
     private RenderTexture m_VoxelNormal;
     private RenderTexture m_VoxelEmission;
     private RenderTexture m_VoxelOpacity;
+
+    private RenderTexture m_VoxelRadiance;
 
     private RTHandle m_EmptyRenderTarget;
 
@@ -72,6 +87,12 @@ class VoxelizeRenderPass : ScriptableRenderPass
             Debug.Assert(m_VoxelOpacity.Create());
         }
 
+        if (m_VoxelRadiance == null)
+        {
+            m_VoxelRadiance = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R16G16B16A16_SFloat);
+            Debug.Assert(m_VoxelRadiance.Create());
+        }
+
         if (m_EmptyRenderTarget == null)
         {
             m_EmptyRenderTarget = RTHandles.Alloc(
@@ -98,7 +119,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
         var cmd = renderingData.commandBuffer;
         using (new ProfilingScope(cmd, m_VoxelSetupSampler))
         {
-            ClearVoxelTextures(context, cmd);
+            ClearVoxelTextures(ref context, cmd);
 
             cmd.SetViewport(new Rect(0, 0, resolution, resolution));
             cmd.SetRandomWriteTarget(1, m_VoxelAlbedo);
@@ -159,10 +180,12 @@ class VoxelizeRenderPass : ScriptableRenderPass
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
 
+            ComputeRadiance(ref context, ref renderingData);
+
             if (m_Feature.VisulizeShader != null && m_Feature.m_VisualizeTexture != null)
             {
                 int kernalId = m_Feature.VisulizeShader.FindKernel("main");
-                cmd.SetComputeTextureParam(m_Feature.VisulizeShader, kernalId, "from", m_VoxelNormal);
+                cmd.SetComputeTextureParam(m_Feature.VisulizeShader, kernalId, "from", m_VoxelRadiance);
                 cmd.SetComputeTextureParam(m_Feature.VisulizeShader, kernalId, "to", m_Feature.m_VisualizeTexture);
                 context.ExecuteCommandBuffer(cmd);
                 cmd.Clear();
@@ -178,7 +201,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
         }
     }
 
-    private void ClearVoxelTextures(ScriptableRenderContext context, CommandBuffer cmd)
+    private void ClearVoxelTextures(ref ScriptableRenderContext context, CommandBuffer cmd)
     {
         int resolution = m_Feature.m_Resolution;
         var clearShader = m_Feature.ClearTexture3DShader;
@@ -218,6 +241,53 @@ class VoxelizeRenderPass : ScriptableRenderPass
             cmd.Clear();
 
             cmd.DispatchCompute(clearShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
+            context.ExecuteCommandBuffer(cmd);
+            cmd.Clear();
+        }
+    }
+
+    private void ComputeRadiance(ref ScriptableRenderContext context, ref RenderingData renderingData)
+    {
+        var cmd = renderingData.commandBuffer;
+
+        int resolution = m_Feature.m_Resolution;
+        var diShader = m_Feature.DirectIllumShader;
+        int kernalId = diShader.FindKernel("main");
+        var directionalKeyword = diShader.keywordSpace.FindKeyword("_DIRECTIONAL");
+
+        diShader.GetKernelThreadGroupSizes(kernalId, out var x, out var y, out var z);
+        int threadGroupsX = resolution / (int)x;
+        int threadGroupsY = resolution / (int)y;
+        int threadGroupsZ = resolution / (int)z;
+
+        cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelAlbedo", m_VoxelAlbedo);
+        cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelNormal", m_VoxelNormal);
+        cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelEmission", m_VoxelEmission);
+        cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelRadiance", m_VoxelRadiance);
+
+        for (int i = 0; i < renderingData.lightData.visibleLights.Length; ++i)
+        {
+            ref var visibleLight = ref renderingData.lightData.visibleLights.UnsafeElementAtMutable(i);
+            UniversalRenderPipeline.InitializeLightConstants_Common(renderingData.lightData.visibleLights, i,
+                out var lightPos, out var lightColor, out var lightAttenuation, out var lightSpotDir, out var lightOcclusionProbeChannel);
+
+            if (visibleLight.lightType == LightType.Directional)
+            {
+                cmd.EnableKeyword(diShader, directionalKeyword);
+                lightSpotDir = lightPos;
+            }
+            else
+            {
+                cmd.DisableKeyword(diShader, directionalKeyword);
+            }
+
+            cmd.SetComputeVectorParam(diShader, ShaderConstants._LightPosWS, lightPos);
+            cmd.SetComputeVectorParam(diShader, ShaderConstants._LightColor, lightColor);
+            cmd.SetComputeVectorParam(diShader, ShaderConstants._LightAttenuation, lightAttenuation);
+            cmd.SetComputeVectorParam(diShader, ShaderConstants._LightOcclusionProbInfo, lightOcclusionProbeChannel);
+            cmd.SetComputeVectorParam(diShader, ShaderConstants._LightDirection, lightSpotDir);
+
+            cmd.DispatchCompute(diShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
         }

@@ -24,6 +24,10 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     [Reload("Shaders/VXGI/RGBA8ToFloat4.compute")]
     private ComputeShader m_VisualizeShader;
 
+    [SerializeField]
+    [HideInInspector]
+    [Reload("Shaders/VXGI/VoxelDirectIllumination.compute")]
+    private ComputeShader m_DirectIllumShader;
 
     [SerializeField]
     [HideInInspector]
@@ -36,6 +40,8 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     public Shader VXGIShader => m_VXGIShader;
     public ComputeShader ClearTexture3DShader => m_ClearTexture3DShader;
     public ComputeShader VisulizeShader => m_VisualizeShader;
+    public ComputeShader DirectIllumShader => m_DirectIllumShader;
+
     public Camera VoxelizeCamera => m_VoxelizeCamera;
 
     /// <inheritdoc/>
