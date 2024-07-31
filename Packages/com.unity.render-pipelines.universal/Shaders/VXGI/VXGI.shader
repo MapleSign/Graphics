@@ -53,8 +53,9 @@ Shader "Universal Render Pipeline/VXGI"
             float4x4 _ViewProjectionsInv[3];
 
             float4 _VolumeMinPoint;
-            float4 _VolumeScale;
-            float _VolumeResolution;
+            float4 _VolumeScale; // 1.0 / _VolumeSize
+            float4 _VolumeSize;
+            float4 _VolumeResolution; // res, res, 1.0 / res, 1.0 / res
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
@@ -264,7 +265,7 @@ Shader "Universal Render Pipeline/VXGI"
                     input[2].uv
                 };
 
-                float2 halfPixel = float(1.0 / _VolumeResolution).xx;
+                float2 halfPixel = 1.0 / _VolumeResolution.xx;
                 float4 aabb = CalcAABB(pos, halfPixel);
                 
                 DilateTriangle(pos, uv, halfPixel);
@@ -282,7 +283,7 @@ Shader "Universal Render Pipeline/VXGI"
 
                     output.positionVS.xyz = mul(viewProjInv, pos[i]).xyz - _VolumeMinPoint.xyz;
                     output.positionVS.xyz *= _VolumeScale.xyz;
-                    output.positionVS.xyz *= _VolumeResolution;
+                    output.positionVS.xyz *= _VolumeResolution.x;
                     output.positionVS.w = 1.0;
 
                     outStream.Append(output);
@@ -291,7 +292,7 @@ Shader "Universal Render Pipeline/VXGI"
 
             float frag(GSOutput input) : SV_Target
             {
-                float2 positionCS = input.positionCS.xy / _VolumeResolution * 2.0 - 1.0;
+                float2 positionCS = input.positionCS.xy * _VolumeResolution.z * 2.0 - 1.0;
                 positionCS.y *= -1.0;
                 if (positionCS.x < input.aabb.x || positionCS.y < input.aabb.y || 
                     positionCS.x > input.aabb.z || positionCS.y > input.aabb.w)

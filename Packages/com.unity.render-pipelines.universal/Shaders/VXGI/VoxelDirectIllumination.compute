@@ -13,8 +13,9 @@ RWTexture3D<unorm float4> _VoxelEmission;
 RWTexture3D<half4> _VoxelRadiance;
 
 float4 _VolumeMinPoint;
-float4 _VolumeScale;
-float _VolumeResolution;
+float4 _VolumeScale; // 1.0 / _VolumeSize
+float4 _VolumeSize;
+float4 _VolumeResolution; // res, res, 1.0 / res, 1.0 / res
 
 float3 _LightPosWS;
 half3 _LightColor;
@@ -38,7 +39,7 @@ void main(uint3 tid : SV_DispatchThreadID)
     normal.xyz = normal.xyz * 2.0 - 1.0;
     float4 emission = _VoxelEmission[tid];
 
-    float4 positionWS = float4(float3(tid) / _VolumeScale.xyz / _VolumeResolution + _VolumeMinPoint.xyz, 1.0);
+    float4 positionWS = float4(float3(tid) * _VolumeScale.xyz * _VolumeResolution.z + _VolumeMinPoint.xyz, 1.0);
     Light light;
 
     #if defined(_DIRECTIONAL)
@@ -66,6 +67,8 @@ void main(uint3 tid : SV_DispatchThreadID)
     #endif
 
     float3 lightColor = light.color * light.distanceAttenuation * light.shadowAttenuation;
-    float3 brdf = albedo.rgb * INV_PI * max(dot(normal.xyz, light.direction.xyz), 0.0);
+    // float NdotL = max(dot(normal.xyz, light.direction.xyz), 0.0);
+    float NdotL = dot(normal.xyz * normal.xyz, abs(light.direction.xyz)); // normal weighted
+    float3 brdf = albedo.rgb * INV_PI * NdotL;
     _VoxelRadiance[tid] = half4(lightColor * brdf, 1.0);
 }

@@ -9,6 +9,17 @@ class VoxelizeRenderPass : ScriptableRenderPass
 {
     internal static class ShaderConstants
     {
+        public static int _VoxelAlbedo = Shader.PropertyToID("_VoxelAlbedo");
+        public static int _VoxelNormal = Shader.PropertyToID("_VoxelNormal");
+        public static int _VoxelEmission = Shader.PropertyToID("_VoxelEmission");
+        public static int _VoxelOpacity = Shader.PropertyToID("_VoxelOpacity");
+        public static int _VoxelRadiance = Shader.PropertyToID("_VoxelRadiance");
+
+        public static int _VolumeMinPoint = Shader.PropertyToID("_VolumeMinPoint");
+        public static int _VolumeScale = Shader.PropertyToID("_VolumeScale");
+        public static int _VolumeSize = Shader.PropertyToID("_VolumeSize");
+        public static int _VolumeResolution = Shader.PropertyToID("_VolumeResolution");
+
         public static int _LightPosWS = Shader.PropertyToID("_LightPosWS");
         public static int _LightColor = Shader.PropertyToID("_LightColor");
         public static int _LightAttenuation = Shader.PropertyToID("_LightAttenuation");
@@ -132,9 +143,10 @@ class VoxelizeRenderPass : ScriptableRenderPass
 
             Bounds bounds = m_Feature.m_VXGIVolume;
 
-            cmd.SetGlobalVector("_VolumeMinPoint", bounds.min);
-            cmd.SetGlobalVector("_VolumeScale", new Vector4(1f / bounds.size.x, 1f / bounds.size.y, 1f / bounds.size.z));
-            cmd.SetGlobalFloat("_VolumeResolution", resolution);
+            cmd.SetGlobalVector(ShaderConstants._VolumeMinPoint, bounds.min);
+            cmd.SetGlobalVector(ShaderConstants._VolumeScale, new Vector4(1f / bounds.size.x, 1f / bounds.size.y, 1f / bounds.size.z));
+            cmd.SetGlobalVector(ShaderConstants._VolumeSize, bounds.size);
+            cmd.SetGlobalVector(ShaderConstants._VolumeResolution, new Vector4(resolution, resolution, 1f / resolution, 1f / resolution));
 
             Matrix4x4[] projs = new Matrix4x4[3] {
                 Matrix4x4.Ortho(-bounds.extents[2], bounds.extents[2], -bounds.extents[1], bounds.extents[1], 0, bounds.size[0]),
@@ -262,10 +274,10 @@ class VoxelizeRenderPass : ScriptableRenderPass
         int threadGroupsY = resolution / (int)y;
         int threadGroupsZ = resolution / (int)z;
 
-        cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelAlbedo", m_VoxelAlbedo);
-        cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelNormal", m_VoxelNormal);
-        cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelEmission", m_VoxelEmission);
-        cmd.SetComputeTextureParam(diShader, kernalId, "_VoxelRadiance", m_VoxelRadiance);
+        cmd.SetComputeTextureParam(diShader, kernalId, ShaderConstants._VoxelAlbedo, m_VoxelAlbedo);
+        cmd.SetComputeTextureParam(diShader, kernalId, ShaderConstants._VoxelNormal, m_VoxelNormal);
+        cmd.SetComputeTextureParam(diShader, kernalId, ShaderConstants._VoxelEmission, m_VoxelEmission);
+        cmd.SetComputeTextureParam(diShader, kernalId, ShaderConstants._VoxelRadiance, m_VoxelRadiance);
         context.ExecuteCommandBuffer(cmd);
         cmd.Clear();
 
