@@ -12,7 +12,7 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     [SerializeField]
     [HideInInspector]
     [Reload("Shaders/VXGI/VXGI.shader")]
-    readonly public Shader m_VXGIShader;
+    public Shader m_VXGIShader;
 
     [SerializeField]
     [HideInInspector]
@@ -22,17 +22,17 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     [SerializeField]
     [HideInInspector]
     [Reload("Shaders/VXGI/RGBA8ToFloat4.compute")]
-    readonly public ComputeShader m_RGBA8ToFloat4Shader;
+    public ComputeShader m_RGBA8ToFloat4Shader;
 
     [SerializeField]
     [HideInInspector]
     [Reload("Shaders/VXGI/CopyTexture3D.compute")]
-    readonly public ComputeShader m_CopyTexture3DShader;
+    public ComputeShader m_CopyTexture3DShader;
 
     [SerializeField]
     [HideInInspector]
     [Reload("Shaders/VXGI/SampleTexture3D.compute")]
-    readonly public ComputeShader m_SampleTexture3DShader;
+    public ComputeShader m_SampleTexture3DShader;
 
     [SerializeField]
     [HideInInspector]
@@ -42,12 +42,12 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     [SerializeField]
     [HideInInspector]
     [Reload("Shaders/VXGI/AnisotropicVoxels.compute")]
-    readonly public ComputeShader m_VoxelAnisoShader;
+    public ComputeShader m_VoxelAnisoShader;
 
     [SerializeField]
     [HideInInspector]
     [Reload("Shaders/VXGI/MipmapTexture3D.compute")]
-    readonly public ComputeShader m_VoxelMipmapShader;
+    public ComputeShader m_VoxelMipmapShader;
 
     [SerializeField]
     [HideInInspector]
