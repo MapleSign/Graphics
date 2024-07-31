@@ -1,0 +1,88 @@
+#pragma kernel main
+
+#pragma enable_d3d11_debug_symbols
+
+Texture3D<half4> _VoxelRadiance;
+
+#define ANISO_DIR_COUNT 6
+RWTexture3D<half4> _VoxelRadianceAniso[ANISO_DIR_COUNT]; // +X -X +Y -Y +Z -Z
+
+#define SAMPLE_VOXEL_COUNT 8
+// 2 x 2 x 2 filter
+static const uint3 offsets[SAMPLE_VOXEL_COUNT] = {
+    uint3(1, 1, 1),
+    uint3(1, 1, 0),
+    uint3(1, 0, 1),
+    uint3(1, 0, 0),
+    uint3(0, 1, 1),
+    uint3(0, 1, 0),
+    uint3(0, 0, 1),
+    uint3(0, 0, 0)
+};
+
+[numthreads(8, 8, 8)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    uint3 dstPos = tid; // the texel pos used to write aniso radiance
+    uint3 srcPos = dstPos * 2; // the texel pos used to sample radiance, start at bottom-left corner
+    
+    float4 vals[SAMPLE_VOXEL_COUNT];
+    for (uint i = 0; i < SAMPLE_VOXEL_COUNT; i++)
+    {
+        vals[i] = _VoxelRadiance[srcPos + offsets[i]];
+    }
+
+    // from +X to -X
+    _VoxelRadianceAniso[0][dstPos] =
+    (
+         vals[0] + vals[4] * (1.0 - vals[0].a) + 
+         vals[1] + vals[5] * (1.0 - vals[1].a) +
+         vals[2] + vals[6] * (1.0 - vals[2].a) +
+         vals[3] + vals[7] * (1.0 - vals[3].a)
+    ) * 0.25;
+
+    // from -X to +X
+    _VoxelRadianceAniso[1][dstPos] =
+    (
+         vals[4] + vals[0] * (1.0 - vals[4].a) + 
+         vals[5] + vals[1] * (1.0 - vals[5].a) +
+         vals[6] + vals[2] * (1.0 - vals[6].a) +
+         vals[7] + vals[3] * (1.0 - vals[7].a)
+    ) * 0.25;
+
+    // from +Y to -Y
+    _VoxelRadianceAniso[2][dstPos] =
+    (
+         vals[0] + vals[2] * (1.0 - vals[0].a) + 
+         vals[1] + vals[3] * (1.0 - vals[1].a) +
+         vals[4] + vals[6] * (1.0 - vals[4].a) +
+         vals[5] + vals[7] * (1.0 - vals[5].a)
+    ) * 0.25;
+
+    // from -Y to +Y
+    _VoxelRadianceAniso[3][dstPos] =
+    (
+         vals[2] + vals[0] * (1.0 - vals[2].a) + 
+         vals[3] + vals[1] * (1.0 - vals[3].a) +
+         vals[6] + vals[4] * (1.0 - vals[6].a) +
+         vals[7] + vals[5] * (1.0 - vals[7].a)
+    ) * 0.25;
+
+    // from +Z to -Z
+    _VoxelRadianceAniso[4][dstPos] =
+    (
+         vals[0] + vals[1] * (1.0 - vals[0].a) + 
+         vals[2] + vals[3] * (1.0 - vals[2].a) +
+         vals[4] + vals[5] * (1.0 - vals[4].a) +
+         vals[6] + vals[7] * (1.0 - vals[6].a)
+    ) * 0.25;
+
+    // from -Z to +Z
+    _VoxelRadianceAniso[5][dstPos] =
+    (
+         vals[1] + vals[0] * (1.0 - vals[1].a) + 
+         vals[3] + vals[2] * (1.0 - vals[3].a) +
+         vals[5] + vals[4] * (1.0 - vals[5].a) +
+         vals[7] + vals[6] * (1.0 - vals[7].a)
+    ) * 0.25;
+}

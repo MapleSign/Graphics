@@ -1,0 +1,14 @@
+#pragma kernel main
+
+Texture3D<float4> from;
+SamplerState sampler_from;
+
+RWTexture3D<float4> to;
+float3 _DstResolution;
+
+[numthreads(8, 8, 8)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    float3 uvw = float3(tid) / _DstResolution;
+    to[tid.xyz] = from.SampleLevel(sampler_from, uvw, 0);
+}

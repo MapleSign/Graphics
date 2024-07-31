@@ -31,8 +31,18 @@ public class VXGIRenderFeature : ScriptableRendererFeature
 
     [SerializeField]
     [HideInInspector]
+    [Reload("Shaders/VXGI/SampleTexture3D.compute")]
+    readonly public ComputeShader m_SampleTexture3DShader;
+
+    [SerializeField]
+    [HideInInspector]
     [Reload("Shaders/VXGI/VoxelDirectIllumination.compute")]
     private ComputeShader m_DirectIllumShader;
+
+    [SerializeField]
+    [HideInInspector]
+    [Reload("Shaders/VXGI/AnisotropicVoxels.compute")]
+    readonly public ComputeShader m_VoxelAnisoShader;
 
     [SerializeField]
     [HideInInspector]
