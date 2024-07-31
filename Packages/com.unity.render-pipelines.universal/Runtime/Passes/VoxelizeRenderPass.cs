@@ -45,6 +45,10 @@ class VoxelizeRenderPass : ScriptableRenderPass
 
     private RenderTexture m_VoxelRadiance;
 
+    private const int k_Anisotropic = 6;
+    private const int k_MipmapLevel = 8;
+    private Texture3D[] m_VoxelAnisos;
+
     private RTHandle m_EmptyRenderTarget;
 
     private ProfilingSampler m_VoxelSetupSampler;
@@ -102,6 +106,11 @@ class VoxelizeRenderPass : ScriptableRenderPass
         {
             m_VoxelRadiance = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R16G16B16A16_SFloat);
             Debug.Assert(m_VoxelRadiance.Create());
+        }
+
+        if (m_VoxelAnisos == null)
+        {
+            CreateVoxelAnisos(m_Feature.m_Resolution, GraphicsFormat.R16G16B16A16_SFloat, k_MipmapLevel);
         }
 
         if (m_EmptyRenderTarget == null)
@@ -247,6 +256,11 @@ class VoxelizeRenderPass : ScriptableRenderPass
         context.ExecuteCommandBuffer(cmd);
         cmd.Clear();
 
+        cmd.SetComputeTextureParam(clearShader, kernalId, nameId, m_VoxelRadiance);
+        cmd.DispatchCompute(clearShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
+        context.ExecuteCommandBuffer(cmd);
+        cmd.Clear();
+
         if (m_Feature.m_VisualizeTexture != null)
         {
             cmd.EnableKeyword(clearShader, typeKeyword);
@@ -324,5 +338,16 @@ class VoxelizeRenderPass : ScriptableRenderPass
         rt.enableRandomWrite = true;
 
         return rt;
+    }
+
+    private void CreateVoxelAnisos(int resolution, GraphicsFormat colorFormat, int mipmap)
+    {
+        m_VoxelAnisos = new Texture3D[k_Anisotropic];
+        for (int i = 0; i < k_Anisotropic; i++)
+        {
+            m_VoxelAnisos[i] = new Texture3D(resolution, resolution, resolution, colorFormat, TextureCreationFlags.MipChain, mipmap);
+            m_VoxelAnisos[i].wrapMode = TextureWrapMode.Clamp;
+            m_VoxelAnisos[i].filterMode = FilterMode.Bilinear;
+        }
     }
 }
