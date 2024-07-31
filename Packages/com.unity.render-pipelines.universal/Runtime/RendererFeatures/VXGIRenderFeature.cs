@@ -46,6 +46,11 @@ public class VXGIRenderFeature : ScriptableRendererFeature
 
     [SerializeField]
     [HideInInspector]
+    [Reload("Shaders/VXGI/MipmapTexture3D.compute")]
+    readonly public ComputeShader m_VoxelMipmapShader;
+
+    [SerializeField]
+    [HideInInspector]
     [Reload("Prefabs/VoxelizeCamera.prefab")]
     private GameObject m_VoxelizeCameraPrefab;
     private Camera m_VoxelizeCamera;

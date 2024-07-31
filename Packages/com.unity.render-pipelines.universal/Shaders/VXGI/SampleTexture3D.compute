@@ -2,6 +2,7 @@
 
 Texture3D<float4> from;
 SamplerState sampler_from;
+int _SrcMipmap;
 
 RWTexture3D<float4> to;
 float3 _DstResolution;
@@ -10,5 +11,5 @@ float3 _DstResolution;
 void main(uint3 tid : SV_DispatchThreadID)
 {
     float3 uvw = float3(tid) / _DstResolution;
-    to[tid.xyz] = from.SampleLevel(sampler_from, uvw, 0);
+    to[tid.xyz] = from.SampleLevel(sampler_from, uvw, _SrcMipmap);
 }

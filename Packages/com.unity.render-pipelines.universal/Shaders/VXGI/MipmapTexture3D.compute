@@ -1,0 +1,104 @@
+#pragma kernel main
+
+#pragma enable_d3d11_debug_symbols
+
+#define ANISO_DIR_COUNT 6
+
+Texture3D<half4> _VoxelMipmapSrc[ANISO_DIR_COUNT];
+int _SrcMipmapLevel;
+
+RWTexture3D<half4> _VoxelMipmapDst[ANISO_DIR_COUNT];
+int _DstResolution;
+
+#define SAMPLE_VOXEL_COUNT 8
+// 2 x 2 x 2 filter
+static const uint3 offsets[SAMPLE_VOXEL_COUNT] = {
+    uint3(1, 1, 1),
+    uint3(1, 1, 0),
+    uint3(1, 0, 1),
+    uint3(1, 0, 0),
+    uint3(0, 1, 1),
+    uint3(0, 1, 0),
+    uint3(0, 0, 1),
+    uint3(0, 0, 0)
+};
+
+void SampleFilter(Texture3D<half4> tex, uint3 pos, inout float4 outVal[SAMPLE_VOXEL_COUNT])
+{
+    for (uint i = 0; i < SAMPLE_VOXEL_COUNT; i++)
+    {
+        outVal[i] = tex.mips[_SrcMipmapLevel][pos + offsets[i]];
+    }
+}
+
+[numthreads(8, 8, 8)]
+void main(uint3 tid : SV_DispatchThreadID)
+{
+    if (tid.x >= _DstResolution || tid.y >= _DstResolution || tid.z >= _DstResolution)
+        return;
+
+    uint3 dstPos = tid; // the texel pos used to write dst
+    uint3 srcPos = dstPos * 2; // the texel pos used to sample src, start at bottom-left corner
+    
+    float4 vals[SAMPLE_VOXEL_COUNT];
+
+    SampleFilter(_VoxelMipmapSrc[0], srcPos, vals);
+    // from +X to -X
+    _VoxelMipmapDst[0][dstPos] =
+    (
+         vals[0] + vals[4] * (1.0 - vals[0].a) + 
+         vals[1] + vals[5] * (1.0 - vals[1].a) +
+         vals[2] + vals[6] * (1.0 - vals[2].a) +
+         vals[3] + vals[7] * (1.0 - vals[3].a)
+    ) * 0.25;
+
+    SampleFilter(_VoxelMipmapSrc[1], srcPos, vals);
+    // from -X to +X
+    _VoxelMipmapDst[1][dstPos] =
+    (
+         vals[4] + vals[0] * (1.0 - vals[4].a) + 
+         vals[5] + vals[1] * (1.0 - vals[5].a) +
+         vals[6] + vals[2] * (1.0 - vals[6].a) +
+         vals[7] + vals[3] * (1.0 - vals[7].a)
+    ) * 0.25;
+
+    SampleFilter(_VoxelMipmapSrc[2], srcPos, vals);
+    // from +Y to -Y
+    _VoxelMipmapDst[2][dstPos] =
+    (
+         vals[0] + vals[2] * (1.0 - vals[0].a) + 
+         vals[1] + vals[3] * (1.0 - vals[1].a) +
+         vals[4] + vals[6] * (1.0 - vals[4].a) +
+         vals[5] + vals[7] * (1.0 - vals[5].a)
+    ) * 0.25;
+
+    SampleFilter(_VoxelMipmapSrc[3], srcPos, vals);
+    // from -Y to +Y
+    _VoxelMipmapDst[3][dstPos] =
+    (
+         vals[2] + vals[0] * (1.0 - vals[2].a) + 
+         vals[3] + vals[1] * (1.0 - vals[3].a) +
+         vals[6] + vals[4] * (1.0 - vals[6].a) +
+         vals[7] + vals[5] * (1.0 - vals[7].a)
+    ) * 0.25;
+
+    SampleFilter(_VoxelMipmapSrc[4], srcPos, vals);
+    // from +Z to -Z
+    _VoxelMipmapDst[4][dstPos] =
+    (
+         vals[0] + vals[1] * (1.0 - vals[0].a) + 
+         vals[2] + vals[3] * (1.0 - vals[2].a) +
+         vals[4] + vals[5] * (1.0 - vals[4].a) +
+         vals[6] + vals[7] * (1.0 - vals[6].a)
+    ) * 0.25;
+
+    SampleFilter(_VoxelMipmapSrc[5], srcPos, vals);
+    // from -Z to +Z
+    _VoxelMipmapDst[5][dstPos] =
+    (
+         vals[1] + vals[0] * (1.0 - vals[1].a) + 
+         vals[3] + vals[2] * (1.0 - vals[3].a) +
+         vals[5] + vals[4] * (1.0 - vals[5].a) +
+         vals[7] + vals[6] * (1.0 - vals[7].a)
+    ) * 0.25;
+}
