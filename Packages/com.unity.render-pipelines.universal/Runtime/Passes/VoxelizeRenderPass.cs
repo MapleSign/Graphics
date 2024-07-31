@@ -49,6 +49,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
     private int m_MipmapCount;
     private RenderTexture[] m_VoxelAnisos;
     private int m_VoxelAnisoResolution;
+    private RenderTexture[] m_VoxelAnisosTmp;
 
     private RTHandle m_EmptyRenderTarget;
 
@@ -208,7 +209,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
             ComputeVoxelAnisoRadiance(ref context, ref renderingData);
             GenerateVoxelAnisoMipmap(ref context, ref renderingData);
 
-            VisualizeTexture3D(ref context, cmd, m_VoxelAnisos[0], 5);
+            VisualizeTexture3D(ref context, cmd, m_VoxelAnisos[0], 1);
         }
     }
 
@@ -361,14 +362,20 @@ class VoxelizeRenderPass : ScriptableRenderPass
 
             for (int anisoIndex = 0; anisoIndex < k_Anisotropic; ++anisoIndex)
             {
-                //cmd.SetGlobalTexture("_VoxelMipmapSrc[" + anisoIndex + "]", m_VoxelAnisos[anisoIndex]);
                 cmd.SetComputeTextureParam(mipmapShader, kernalId, "_VoxelMipmapSrc[" + anisoIndex + "]", m_VoxelAnisos[anisoIndex]);
-                cmd.SetComputeTextureParam(mipmapShader, kernalId, "_VoxelMipmapDst[" + anisoIndex + "]", m_VoxelAnisos[anisoIndex], i);
+                cmd.SetComputeTextureParam(mipmapShader, kernalId, "_VoxelMipmapDst[" + anisoIndex + "]", m_VoxelAnisosTmp[anisoIndex], i);
             }
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
 
             cmd.DispatchCompute(mipmapShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
+            context.ExecuteCommandBuffer(cmd);
+            cmd.Clear();
+
+            for (int anisoIndex = 0; anisoIndex < k_Anisotropic; ++anisoIndex)
+            {
+                CopyTexture3D(cmd, m_VoxelAnisosTmp[anisoIndex], m_VoxelAnisos[anisoIndex], i, i);
+            }
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
         }
@@ -380,24 +387,53 @@ class VoxelizeRenderPass : ScriptableRenderPass
         {
             Vector3Int dstResolution = new Vector3Int(m_Feature.m_VisualizeTexture.width, m_Feature.m_VisualizeTexture.height, m_Feature.m_VisualizeTexture.volumeDepth);
             Vector3Int srcResolution = new Vector3Int(src.width, src.height, src.volumeDepth);
-            var visulizeShader = (dstResolution == srcResolution && mipmap == 0) ? m_Feature.m_CopyTexture3DShader : m_Feature.m_SampleTexture3DShader;
-            int kernalId = visulizeShader.FindKernel("main");
-
-            cmd.SetComputeTextureParam(visulizeShader, kernalId, "from", src);
-            cmd.SetComputeTextureParam(visulizeShader, kernalId, "to", m_Feature.m_VisualizeTexture);
-            cmd.SetComputeIntParam(visulizeShader, "_SrcMipmap", mipmap);
-            cmd.SetComputeVectorParam(visulizeShader, "_DstResolution", new Vector4(dstResolution.x, dstResolution.y, dstResolution.z));
-            context.ExecuteCommandBuffer(cmd);
-            cmd.Clear();
-
-            visulizeShader.GetKernelThreadGroupSizes(kernalId, out var x, out var y, out var z);
-            int threadGroupsX = dstResolution.x / (int)x;
-            int threadGroupsY = dstResolution.y / (int)y;
-            int threadGroupsZ = dstResolution.z / (int)z;
-            cmd.DispatchCompute(visulizeShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
+            if (dstResolution == srcResolution && mipmap == 0)
+            {
+                CopyTexture3D(cmd, src, m_Feature.m_VisualizeTexture, mipmap, 0);
+            }
+            else
+            {
+                SampleTexture3D(cmd, src, m_Feature.m_VisualizeTexture, mipmap, 0);
+            }
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
         }
+    }
+
+    void CopyTexture3D(CommandBuffer cmd, RenderTexture src, RenderTexture dst, int srcMipmap = 0, int dstMipmap = 0)
+    {
+        var copyShader = m_Feature.m_CopyTexture3DShader;
+        int kernalId = copyShader.FindKernel("main");
+        Vector3Int resolution = new Vector3Int(dst.width >> dstMipmap, dst.height >> dstMipmap, dst.volumeDepth >> dstMipmap);
+
+        cmd.SetComputeTextureParam(copyShader, kernalId, "from", src, srcMipmap);
+        cmd.SetComputeTextureParam(copyShader, kernalId, "to", dst, dstMipmap);
+        cmd.SetComputeVectorParam(copyShader, "_Resolution", new Vector4(resolution.x, resolution.y, resolution.z));
+
+        copyShader.GetKernelThreadGroupSizes(kernalId, out var x, out var y, out var z);
+        int threadGroupsX = Mathf.Max(resolution.x / (int)x, 1);
+        int threadGroupsY = Mathf.Max(resolution.y / (int)y, 1);
+        int threadGroupsZ = Mathf.Max(resolution.z / (int)z, 1);
+        cmd.DispatchCompute(copyShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
+    }
+
+    void SampleTexture3D(CommandBuffer cmd, RenderTexture src, RenderTexture dst, int srcMipmap = 0, int dstMipmap = 0)
+    {
+        var sampleShader = m_Feature.m_SampleTexture3DShader;
+        int kernalId = sampleShader.FindKernel("main");
+        Vector3Int resolution = new Vector3Int(dst.width >> dstMipmap, dst.height >> dstMipmap, dst.volumeDepth >> dstMipmap);
+
+        cmd.SetComputeTextureParam(sampleShader, kernalId, "from", src, srcMipmap);
+        cmd.SetComputeTextureParam(sampleShader, kernalId, "to", dst, dstMipmap);
+        cmd.SetComputeIntParam(sampleShader, "_SrcMipmap", srcMipmap);
+        cmd.SetComputeVectorParam(sampleShader, "_DstResolution", new Vector4(resolution.x, resolution.y, resolution.z));
+
+
+        sampleShader.GetKernelThreadGroupSizes(kernalId, out var x, out var y, out var z);
+        int threadGroupsX = Mathf.Max(resolution.x / (int)x, 1);
+        int threadGroupsY = Mathf.Max(resolution.y / (int)y, 1);
+        int threadGroupsZ = Mathf.Max(resolution.z / (int)z, 1);
+        cmd.DispatchCompute(sampleShader, kernalId, threadGroupsX, threadGroupsY, threadGroupsZ);
     }
 
     // Cleanup any allocated resources that were created during the execution of this render pass.
@@ -405,12 +441,20 @@ class VoxelizeRenderPass : ScriptableRenderPass
     {
     }
 
-    private RenderTexture Create3DTexture(int resolution, GraphicsFormat colorFormat)
+    private RenderTexture Create3DTexture(int resolution, GraphicsFormat colorFormat, int mipmap = 0)
     {
-        var rt = new RenderTexture(resolution, resolution, colorFormat, GraphicsFormat.None);
+        var rt = new RenderTexture(resolution, resolution, colorFormat, GraphicsFormat.None, mipmap);
         rt.dimension = TextureDimension.Tex3D;
         rt.volumeDepth = resolution;
         rt.enableRandomWrite = true;
+
+        rt.wrapMode = TextureWrapMode.Clamp;
+        rt.filterMode = FilterMode.Bilinear;
+
+        if (mipmap > 0)
+        {
+            rt.useMipMap = true;
+        }
 
         return rt;
     }
@@ -418,19 +462,14 @@ class VoxelizeRenderPass : ScriptableRenderPass
     private void CreateVoxelAnisos(int resolution, GraphicsFormat colorFormat, int mipmap)
     {
         m_VoxelAnisos = new RenderTexture[k_Anisotropic];
+        m_VoxelAnisosTmp = new RenderTexture[k_Anisotropic];
         for (int i = 0; i < k_Anisotropic; i++)
         {
-            m_VoxelAnisos[i] = new RenderTexture(resolution, resolution, colorFormat, GraphicsFormat.None, mipmap);
-            m_VoxelAnisos[i].dimension = TextureDimension.Tex3D;
-            m_VoxelAnisos[i].volumeDepth = resolution;
-            m_VoxelAnisos[i].enableRandomWrite = true;
-
-            m_VoxelAnisos[i].wrapMode = TextureWrapMode.Clamp;
-            m_VoxelAnisos[i].filterMode = FilterMode.Bilinear;
-
-            m_VoxelAnisos[i].useMipMap = true;
+            m_VoxelAnisos[i] = Create3DTexture(resolution, colorFormat, mipmap);
+            m_VoxelAnisosTmp[i] = Create3DTexture(resolution, colorFormat, mipmap);
 
             Debug.Assert(m_VoxelAnisos[i].Create());
+            Debug.Assert(m_VoxelAnisosTmp[i].Create());
         }
     }
 }

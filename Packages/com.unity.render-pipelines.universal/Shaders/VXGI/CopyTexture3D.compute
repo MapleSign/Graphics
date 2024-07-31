@@ -3,8 +3,12 @@
 RWTexture3D<float4> from;
 RWTexture3D<float4> to;
 
+float3 _Resolution;
+
 [numthreads(8, 8, 8)]
 void main(uint3 tid : SV_DispatchThreadID)
 {
+    if (tid.x >= _Resolution.x || tid.y >= _Resolution.y || tid.z >= _Resolution.z)
+        return;
     to[tid.xyz] = from[tid.xyz];
 }
