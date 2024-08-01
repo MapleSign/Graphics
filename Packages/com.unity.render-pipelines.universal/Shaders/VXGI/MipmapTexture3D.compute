@@ -31,7 +31,9 @@ void SampleFilter(Texture3D<half4> tex, uint3 pos, inout float4 outVal[SAMPLE_VO
     }
 }
 
-[numthreads(8, 8, 8)]
+// too large thread group will exceed register number
+// since we sample and write with 12 3d textures
+[numthreads(4, 4, 4)]
 void main(uint3 tid : SV_DispatchThreadID)
 {
     if (tid.x >= _DstResolution || tid.y >= _DstResolution || tid.z >= _DstResolution)
