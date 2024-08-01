@@ -13,6 +13,7 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     [HideInInspector]
     [Reload("Shaders/VXGI/VXGI.shader")]
     public Shader m_VXGIShader;
+    public Material m_VXGIMaterial;
 
     [SerializeField]
     [HideInInspector]
@@ -55,7 +56,8 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     private GameObject m_VoxelizeCameraPrefab;
     private Camera m_VoxelizeCamera;
 
-    private VoxelizeRenderPass m_ScriptablePass;
+    private VoxelizeRenderPass m_VoxelizePass;
+    private DefferedVXGIPass m_DefferedVXGIPass;
 
     public Shader VXGIShader => m_VXGIShader;
     public ComputeShader ClearTexture3DShader => m_ClearTexture3DShader;
@@ -69,19 +71,23 @@ public class VXGIRenderFeature : ScriptableRendererFeature
 #if UNITY_EDITOR
         ResourceReloader.TryReloadAllNullIn(this, UniversalRenderPipelineAsset.packagePath);
 #endif
+        m_VXGIMaterial = CoreUtils.CreateEngineMaterial(m_VXGIShader);
+
         m_VoxelizeCamera = m_VoxelizeCameraPrefab.GetComponent<Camera>();
 
-        m_ScriptablePass = new VoxelizeRenderPass(this);
+        m_VoxelizePass = new VoxelizeRenderPass(this);
+        m_VoxelizePass.renderPassEvent = RenderPassEvent.BeforeRendering;
 
-        // Configures where the render pass should be injected.
-        m_ScriptablePass.renderPassEvent = RenderPassEvent.BeforeRendering;
+        m_DefferedVXGIPass = new DefferedVXGIPass(this);
+        m_DefferedVXGIPass.renderPassEvent = RenderPassEvent.AfterRenderingDeferredLights;
     }
 
     // Here you can inject one or multiple render passes in the renderer.
     // This method is called when setting up the renderer once per-camera.
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
-        renderer.EnqueuePass(m_ScriptablePass);
+        renderer.EnqueuePass(m_VoxelizePass);
+        renderer.EnqueuePass(m_DefferedVXGIPass);
     }
 
     public override void SetupRenderPasses(ScriptableRenderer renderer, in RenderingData renderingData)
