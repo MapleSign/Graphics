@@ -5,7 +5,7 @@
 Texture3D<half4> _VoxelRadiance;
 
 #define ANISO_DIR_COUNT 6
-RWTexture3D<half4> _VoxelRadianceAniso[ANISO_DIR_COUNT]; // +X -X +Y -Y +Z -Z
+RWTexture3D<half4> _VoxelRadianceAniso[ANISO_DIR_COUNT]; // -X +X -Y +Y -Z +Z
 
 #define SAMPLE_VOXEL_COUNT 8
 // 2 x 2 x 2 filter

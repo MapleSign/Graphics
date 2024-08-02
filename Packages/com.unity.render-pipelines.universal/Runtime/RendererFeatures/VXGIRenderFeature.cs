@@ -59,6 +59,9 @@ public class VXGIRenderFeature : ScriptableRendererFeature
     private VoxelizeRenderPass m_VoxelizePass;
     private DefferedVXGIPass m_DefferedVXGIPass;
 
+    public RenderTexture VoxelRadiance => m_VoxelizePass.VoxelRadiance;
+    public RenderTexture[] VoxelAnisos => m_VoxelizePass.VoxelAnisos;
+
     public Shader VXGIShader => m_VXGIShader;
     public ComputeShader ClearTexture3DShader => m_ClearTexture3DShader;
     public ComputeShader DirectIllumShader => m_DirectIllumShader;

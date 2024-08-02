@@ -13,6 +13,7 @@ class DefferedVXGIPass : ScriptableRenderPass
         public static int _VoxelEmission = Shader.PropertyToID("_VoxelEmission");
         public static int _VoxelOpacity = Shader.PropertyToID("_VoxelOpacity");
         public static int _VoxelRadiance = Shader.PropertyToID("_VoxelRadiance");
+        public static int _VoxelAnisos = Shader.PropertyToID("_VoxelRadianceAniso");
 
         public static int _VolumeMinPoint = Shader.PropertyToID("_VolumeMinPoint");
         public static int _VolumeScale = Shader.PropertyToID("_VolumeScale");
@@ -65,6 +66,11 @@ class DefferedVXGIPass : ScriptableRenderPass
         var cmd = renderingData.commandBuffer;
         using (new ProfilingScope(cmd, m_DefferedVXGISampler))
         {
+            cmd.SetGlobalTexture(ShaderConstants._VoxelRadiance, m_Feature.VoxelRadiance);
+            for (int i = 0; i < m_Feature.VoxelAnisos.Length; i++)
+            {
+                cmd.SetGlobalTexture(ShaderConstants._VoxelAnisos + string.Format("[{0}]", i), m_Feature.VoxelAnisos[i]);
+            }
             Blitter.BlitCameraTexture(cmd, m_CameraColorTarget, m_TmpColorTarget, m_Feature.m_VXGIMaterial, 1);
 
             context.ExecuteCommandBuffer(cmd);

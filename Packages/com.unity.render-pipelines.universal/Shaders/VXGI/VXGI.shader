@@ -75,7 +75,7 @@ Shader "Universal Render Pipeline/VXGI"
 
             TEXTURE3D(_VoxelRadiance);
             #define ANISO_DIR_COUNT 6
-            Texture3D<float4> _VoxelRadianceAniso[ANISO_DIR_COUNT]; // +X -X +Y -Y +Z -Z
+            TEXTURE3D(_VoxelRadianceAniso[ANISO_DIR_COUNT]); // -X +X -Y +Y -Z +Z
 
             SAMPLER(linear_clamp_sampler);
             
@@ -139,9 +139,9 @@ Shader "Universal Render Pipeline/VXGI"
             float4 TraceCone(float3 posWS, float3 normalWS, float3 direction, float aperture, bool traceOcclusion)
             {
                 uint3 anisoFaces;
-                anisoFaces.x = direction.x < 0.0 ? 1 : 0;
-                anisoFaces.y = direction.y < 0.0 ? 3 : 2;
-                anisoFaces.z = direction.z < 0.0 ? 5 : 4;
+                anisoFaces.x = direction.x < 0.0 ? 0 : 1;
+                anisoFaces.y = direction.y < 0.0 ? 2 : 3;
+                anisoFaces.z = direction.z < 0.0 ? 4 : 5;
                 float3 anisoWeight = direction * direction;
 
                 float maxDistance = _VolumeSize.x;
@@ -196,11 +196,10 @@ Shader "Universal Render Pipeline/VXGI"
                 {
                     tangent = float3(0, 0, 1);
                 }
+                // tangent = normalize(tangent - dot(normalWS, tangent) * normalWS);
                 tangent = normalize(cross(normalWS, tangent));
                 float3 bitangent = cross(normalWS, tangent);
 
-                float step = _VolumeSize.x * _VolumeResolution.z;
-                float3 startPos = posWS + normalWS * step;
                 float aperture = 0.57735;
                 float4 diffuseSample = float4(0, 0, 0, 0);
                 for (int i = 0; i < MAX_CONE_COUNT; i++)
@@ -210,6 +209,7 @@ Shader "Universal Render Pipeline/VXGI"
                     float4 coneSample = TraceCone(posWS, normalWS, direction, aperture, true) * diffuseConeWeights[i];
                     diffuseSample += coneSample;
                 }
+                diffuseSample.rgb *= albedo;
 
                 // return float4(posWS, 1.0);
                 // return float4(normalWS * 0.5 + 0.5, 1.0);
@@ -217,8 +217,8 @@ Shader "Universal Render Pipeline/VXGI"
                 // return float4(radiance, 1.0);
                 // return float4(albedo, 1.0);
                 // return float4(metallic, smoothness, 0.0, 1.0);
-                // return diffuseSample;
-                return float4(radiance + diffuseSample.rgb, 1.0);
+                return diffuseSample;
+                // return float4(radiance + diffuseSample.rgb, 1.0);
             }
 
             ENDHLSL

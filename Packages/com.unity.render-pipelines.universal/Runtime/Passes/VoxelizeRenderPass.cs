@@ -51,6 +51,9 @@ class VoxelizeRenderPass : ScriptableRenderPass
     private int m_VoxelAnisoResolution;
     private RenderTexture[] m_VoxelAnisosTmp;
 
+    public RenderTexture VoxelRadiance => m_VoxelRadiance;
+    public RenderTexture[] VoxelAnisos => m_VoxelAnisos;
+
     private RTHandle m_EmptyRenderTarget;
 
     private ProfilingSampler m_VoxelSetupSampler;
@@ -66,13 +69,14 @@ class VoxelizeRenderPass : ScriptableRenderPass
         };
 
         m_Feature = renderFeature;
-        m_VoxelAnisoResolution = m_Feature.m_Resolution / 2;
-        m_MipmapCount = (int)Mathf.Log(m_VoxelAnisoResolution, 2f) + 1;
 
         m_VoxelSetupSampler = new ProfilingSampler("VoxelizeSetup");
 
         m_ViewProjMatrices = new Matrix4x4[3];
         m_ViewProjInvMatrices = new Matrix4x4[3];
+
+        m_VoxelAnisos = new RenderTexture[k_Anisotropic];
+        m_VoxelAnisosTmp = new RenderTexture[k_Anisotropic];
     }
 
     // This method is called before executing the render pass.
@@ -82,46 +86,19 @@ class VoxelizeRenderPass : ScriptableRenderPass
     // The render pipeline will ensure target setup and clearing happens in a performant manner.
     public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
     {
-        if (m_VoxelAlbedo == null)
-        {
-            m_VoxelAlbedo = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm);
-            Debug.Assert(m_VoxelAlbedo.Create());
-        }
+        m_VoxelAnisoResolution = m_Feature.m_Resolution / 2;
+        m_MipmapCount = (int)Mathf.Log(m_VoxelAnisoResolution, 2f) + 1;
 
-        if (m_VoxelNormal == null)
-        {
-            m_VoxelNormal = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm);
-            Debug.Assert(m_VoxelNormal.Create());
-        }
+        RecreateVoxelTextureIfNeeded(ref m_VoxelAlbedo, m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm, 0);
+        RecreateVoxelTextureIfNeeded(ref m_VoxelNormal, m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm, 0);
+        RecreateVoxelTextureIfNeeded(ref m_VoxelEmission, m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm, 0);
+        RecreateVoxelTextureIfNeeded(ref m_VoxelOpacity, m_Feature.m_Resolution, GraphicsFormat.R8_UInt, 0);
+        RecreateVoxelTextureIfNeeded(ref m_VoxelRadiance, m_Feature.m_Resolution, GraphicsFormat.R16G16B16A16_SFloat, 0);
 
-        if (m_VoxelEmission == null)
-        {
-            m_VoxelEmission = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R8G8B8A8_UNorm);
-            Debug.Assert(m_VoxelEmission.Create());
-        }
+        RecreateVoxelAnisosIfNeeded(m_VoxelAnisoResolution, GraphicsFormat.R16G16B16A16_SFloat, m_MipmapCount);
 
-        if (m_VoxelOpacity == null)
-        {
-            m_VoxelOpacity = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R8_UInt);
-            Debug.Assert(m_VoxelOpacity.Create());
-        }
-
-        if (m_VoxelRadiance == null)
-        {
-            m_VoxelRadiance = Create3DTexture(m_Feature.m_Resolution, GraphicsFormat.R16G16B16A16_SFloat);
-            Debug.Assert(m_VoxelRadiance.Create());
-        }
-
-        if (m_VoxelAnisos == null || m_VoxelAnisos[0] == null)
-        {
-            CreateVoxelAnisos(m_VoxelAnisoResolution, GraphicsFormat.R16G16B16A16_SFloat, m_MipmapCount);
-        }
-
-        if (m_EmptyRenderTarget == null)
-        {
-            m_EmptyRenderTarget = RTHandles.Alloc(
-                m_Feature.m_Resolution, m_Feature.m_Resolution, colorFormat: GraphicsFormat.R32_SFloat);
-        }
+        RenderingUtils.ReAllocateIfNeeded(ref m_EmptyRenderTarget,
+            new RenderTextureDescriptor(m_Feature.m_Resolution, m_Feature.m_Resolution, GraphicsFormat.R32_SFloat, GraphicsFormat.None));
 
         ConfigureTarget(m_EmptyRenderTarget);
         ConfigureClear(ClearFlag.Color, Color.clear);
@@ -209,7 +186,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
             ComputeVoxelAnisoRadiance(ref context, ref renderingData);
             GenerateVoxelAnisoMipmap(ref context, ref renderingData);
 
-            VisualizeTexture3D(ref context, cmd, m_VoxelAnisos[0], 1);
+            VisualizeTexture3D(ref context, cmd, m_VoxelAnisos[0], 0);
         }
     }
 
@@ -226,7 +203,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
         int threadGroupsY = resolution / (int)y;
         int threadGroupsZ = resolution / (int)z;
 
-        cmd.DisableKeyword(clearShader, typeKeyword);
+        cmd.EnableKeyword(clearShader, typeKeyword);
         context.ExecuteCommandBuffer(cmd);
         cmd.Clear();
 
@@ -459,17 +436,37 @@ class VoxelizeRenderPass : ScriptableRenderPass
         return rt;
     }
 
-    private void CreateVoxelAnisos(int resolution, GraphicsFormat colorFormat, int mipmap)
+    private bool RecreateVoxelTextureIfNeeded(ref RenderTexture renderTexture, int resolution, GraphicsFormat colorFormat, int mipmap)
     {
-        m_VoxelAnisos = new RenderTexture[k_Anisotropic];
-        m_VoxelAnisosTmp = new RenderTexture[k_Anisotropic];
+        bool isNull = renderTexture == null;
+        bool recreate = isNull || renderTexture.width != resolution;
+        if (recreate)
+        {
+            if (isNull)
+            {
+                renderTexture = Create3DTexture(resolution, colorFormat, mipmap);
+            }
+            else
+            {
+                renderTexture.Release();
+
+                renderTexture.width = resolution;
+                renderTexture.height = resolution;
+                renderTexture.volumeDepth = resolution;
+            }
+
+            Debug.Assert(renderTexture.Create());
+        }
+
+        return recreate;
+    }
+
+    private void RecreateVoxelAnisosIfNeeded(int resolution, GraphicsFormat colorFormat, int mipmap)
+    {
         for (int i = 0; i < k_Anisotropic; i++)
         {
-            m_VoxelAnisos[i] = Create3DTexture(resolution, colorFormat, mipmap);
-            m_VoxelAnisosTmp[i] = Create3DTexture(resolution, colorFormat, mipmap);
-
-            Debug.Assert(m_VoxelAnisos[i].Create());
-            Debug.Assert(m_VoxelAnisosTmp[i].Create());
+            RecreateVoxelTextureIfNeeded(ref m_VoxelAnisos[i], resolution, colorFormat, mipmap);
+            RecreateVoxelTextureIfNeeded(ref m_VoxelAnisosTmp[i], resolution, colorFormat, mipmap);
         }
     }
 }
