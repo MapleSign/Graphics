@@ -13,12 +13,13 @@ class DefferedVXGIPass : ScriptableRenderPass
         public static int _VoxelEmission = Shader.PropertyToID("_VoxelEmission");
         public static int _VoxelOpacity = Shader.PropertyToID("_VoxelOpacity");
         public static int _VoxelRadiance = Shader.PropertyToID("_VoxelRadiance");
-        public static int _VoxelAnisos = Shader.PropertyToID("_VoxelRadianceAniso");
 
         public static int _VolumeMinPoint = Shader.PropertyToID("_VolumeMinPoint");
         public static int _VolumeScale = Shader.PropertyToID("_VolumeScale");
         public static int _VolumeSize = Shader.PropertyToID("_VolumeSize");
         public static int _VolumeResolution = Shader.PropertyToID("_VolumeResolution");
+
+        public static string _VoxelAnisosName = "_VoxelRadianceAniso";
     }
 
     private List<ShaderTagId> m_ShaderTagIdList;
@@ -69,7 +70,7 @@ class DefferedVXGIPass : ScriptableRenderPass
             cmd.SetGlobalTexture(ShaderConstants._VoxelRadiance, m_Feature.VoxelRadiance);
             for (int i = 0; i < m_Feature.VoxelAnisos.Length; i++)
             {
-                cmd.SetGlobalTexture(ShaderConstants._VoxelAnisos + string.Format("[{0}]", i), m_Feature.VoxelAnisos[i]);
+                cmd.SetGlobalTexture(ShaderConstants._VoxelAnisosName + string.Format("_{0}", i), m_Feature.VoxelAnisos[i]);
             }
             Blitter.BlitCameraTexture(cmd, m_CameraColorTarget, m_TmpColorTarget, m_Feature.m_VXGIMaterial, 1);
 

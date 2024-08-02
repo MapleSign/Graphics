@@ -186,7 +186,7 @@ class VoxelizeRenderPass : ScriptableRenderPass
             ComputeVoxelAnisoRadiance(ref context, ref renderingData);
             GenerateVoxelAnisoMipmap(ref context, ref renderingData);
 
-            VisualizeTexture3D(ref context, cmd, m_VoxelAnisos[0], 0);
+            VisualizeTexture3D(ref context, cmd, m_VoxelAnisos[0], 2);
         }
     }
 

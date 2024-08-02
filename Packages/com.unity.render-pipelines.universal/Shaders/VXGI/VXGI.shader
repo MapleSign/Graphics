@@ -75,7 +75,21 @@ Shader "Universal Render Pipeline/VXGI"
 
             TEXTURE3D(_VoxelRadiance);
             #define ANISO_DIR_COUNT 6
-            TEXTURE3D(_VoxelRadianceAniso[ANISO_DIR_COUNT]); // -X +X -Y +Y -Z +Z
+            TEXTURE3D(_VoxelRadianceAniso_0);
+            TEXTURE3D(_VoxelRadianceAniso_1);
+            TEXTURE3D(_VoxelRadianceAniso_2);
+            TEXTURE3D(_VoxelRadianceAniso_3);
+            TEXTURE3D(_VoxelRadianceAniso_4);
+            TEXTURE3D(_VoxelRadianceAniso_5);
+            // -X +X -Y +Y -Z +Z
+            static Texture3D _VoxelRadianceAniso[ANISO_DIR_COUNT] = {
+                _VoxelRadianceAniso_0,
+                _VoxelRadianceAniso_1,
+                _VoxelRadianceAniso_2,
+                _VoxelRadianceAniso_3,
+                _VoxelRadianceAniso_4,
+                _VoxelRadianceAniso_5
+            };
 
             SAMPLER(linear_clamp_sampler);
             
@@ -125,7 +139,6 @@ Shader "Universal Render Pipeline/VXGI"
                     anisoSample += weight.z * SAMPLE_TEXTURE3D_LOD(_VoxelRadianceAniso[4], linear_clamp_sampler, coord, anisoLevel);
                 else
                     anisoSample += weight.z * SAMPLE_TEXTURE3D_LOD(_VoxelRadianceAniso[5], linear_clamp_sampler, coord, anisoLevel);
-
                 // linearly interpolate on base level
                 if (lod < 1.0)
                 {
@@ -161,7 +174,7 @@ Shader "Universal Render Pipeline/VXGI"
                     float4 anisoSample = AnisotropicSample(sampleCoord, anisoWeight, anisoFaces, mipmapLevel);
                     coneSample += (1.0 - coneSample.a) * anisoSample;
 
-                    t += diameter;
+                    t += diameter * 0.5;
                 }
 
                 return coneSample;
@@ -217,8 +230,8 @@ Shader "Universal Render Pipeline/VXGI"
                 // return float4(radiance, 1.0);
                 // return float4(albedo, 1.0);
                 // return float4(metallic, smoothness, 0.0, 1.0);
-                return diffuseSample;
-                // return float4(radiance + diffuseSample.rgb, 1.0);
+                // return diffuseSample;
+                return float4(radiance + diffuseSample.rgb, 1.0);
             }
 
             ENDHLSL
