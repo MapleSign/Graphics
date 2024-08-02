@@ -76,6 +76,10 @@ class DefferedVXGIPass : ScriptableRenderPass
 
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
+
+            Blitter.BlitCameraTexture(cmd, m_TmpColorTarget, m_CameraColorTarget);
+            context.ExecuteCommandBuffer(cmd);
+            cmd.Clear();
         }
     }
 
