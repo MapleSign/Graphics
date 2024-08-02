@@ -198,6 +198,7 @@ Shader "Universal Render Pipeline/VXGI"
                     float depth = lerp(UNITY_NEAR_CLIP_VALUE, 1, rawDepth);
                 #endif
                 float3 posWS = ComputeWorldSpacePosition(uv, depth, UNITY_MATRIX_I_VP);
+                float3 viewPosWS = unity_CameraToWorld._m03_m13_m23;
 
                 float3 normalWS = SampleSceneNormals(uv);
                 float3 albedo = SAMPLE_TEXTURE2D(_GBuffer0, point_clamp_sampler, uv).rgb;
@@ -223,6 +224,15 @@ Shader "Universal Render Pipeline/VXGI"
                     diffuseSample += coneSample;
                 }
                 diffuseSample.rgb *= albedo;
+                diffuseSample.rgb *= 1.0 - metallic;
+                
+                float4 specularSample = float4(0, 0, 0, 0);
+                float3 viewDir = normalize(viewPosWS - posWS);
+                float3 reflectDir = reflect(-viewDir, normalWS);
+                reflectDir = normalize(reflectDir);
+                float specularAperture = clamp(tan(HALF_PI * (1.0f - smoothness)), 0.013708, PI);
+                specularSample = TraceCone(posWS, normalWS, reflectDir, specularAperture, false);
+                specularSample.rgb *= metallic;
 
                 // return float4(posWS, 1.0);
                 // return float4(normalWS * 0.5 + 0.5, 1.0);
@@ -231,7 +241,8 @@ Shader "Universal Render Pipeline/VXGI"
                 // return float4(albedo, 1.0);
                 // return float4(metallic, smoothness, 0.0, 1.0);
                 // return diffuseSample;
-                return float4(radiance + diffuseSample.rgb, 1.0);
+                // return specularAperture;
+                return float4(radiance + diffuseSample.rgb + specularSample.rgb, 1.0);
             }
 
             ENDHLSL
